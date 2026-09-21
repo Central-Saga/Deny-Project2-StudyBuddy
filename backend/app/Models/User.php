@@ -2,31 +2,72 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Profile;
+use App\Models\UserSubject;
+use App\Models\StudyGroup;
+use App\Models\StudySession;
+use App\Models\Group;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'course',
+        'skills',
+        'bio',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'skills' => 'array',
         ];
+    }
+
+    // Relasi ke Profile
+    public function profile(): HasOne
+    {
+        return $this->hasOne(Profile::class);
+    }
+
+    // Relasi ke Subjects (Minat/Keahlian)
+    public function userSubjects(): HasMany
+    {
+        return $this->hasMany(UserSubject::class);
+    }
+
+    // Grup Belajar yang Dibuat
+    public function createdGroups(): HasMany
+    {
+        return $this->hasMany(StudyGroup::class, 'creator_id');
+    }
+
+    // Sesi Belajar yang Dibuat/Dihost
+    public function hostedSessions(): HasMany
+    {
+        return $this->hasMany(StudySession::class, 'host_id');
+    }
+
+    // Grup Belajar yang Diikuti
+    public function joinedGroups()
+    {
+        return $this->belongsToMany(Group::class, 'group_user')->withTimestamps();
     }
 }

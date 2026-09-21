@@ -1,0 +1,24 @@
+# Node dependencies (Frontend)
+node_modules/
+frontend/node_modules/
+
+# Next.js build output
+.next/
+frontend/.next/
+out/
+
+# PHP / Laravel dependencies (Backend)
+vendor/
+backend/vendor/
+
+# Environment files (Sangat Penting: berisi password/secret)
+.env
+.env.*
+backend/.env
+frontend/.env.local
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
