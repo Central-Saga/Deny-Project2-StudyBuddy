@@ -1,19 +1,10 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
-  Users,
   Search,
   Plus,
-  GraduationCap,
-  Home,
-  Calendar,
-  BookOpen,
-  Award,
-  UserCheck,
-  Bell,
-  User,
-  LogOut,
   Lock,
   Globe,
   UserPlus,
@@ -21,8 +12,8 @@ import {
   MessageSquare,
   X,
   Loader2,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
+  AlertCircle,
+} from 'lucide-react';
 
 interface GroupMember {
   id: number;
@@ -45,86 +36,93 @@ export default function GroupsPage() {
   const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
   // Form State Buat Grup Baru
   const [newGroup, setNewGroup] = useState({
-    name: "",
-    course: "Basis Data",
-    description: "",
+    name: '',
+    course: 'Basis Data',
+    description: '',
     max_members: 10,
     is_private: false,
-    schedule: "Setiap Sabtu • 15:00 WIB",
+    schedule: 'Setiap Sabtu • 15:00 WITA',
   });
 
   // Fetch Data User Login & Groups dari Backend
-  const fetchGroups = async () => {
-    const token = localStorage.getItem("access_token");
-    const userData = localStorage.getItem("user_data");
+  const fetchGroups = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg(null);
+
+    const token = localStorage.getItem('access_token');
+    const userData = localStorage.getItem('user_data');
 
     if (!token) {
-      router.push("/login");
+      router.push('/login');
       return;
     }
 
     if (userData) {
-      const parsedUser = JSON.parse(userData);
-      setCurrentUserId(parsedUser.id);
+      try {
+        const parsedUser = JSON.parse(userData);
+        setCurrentUserId(parsedUser.id);
+      } catch (e) {
+        console.error('Gagal membaca data user:', e);
+      }
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/groups", {
+      const res = await fetch('http://localhost:8000/api/groups', {
         headers: {
           Authorization: `Bearer ${token}`,
-          Accept: "application/json",
+          Accept: 'application/json',
         },
       });
 
       if (res.status === 401) {
-        localStorage.removeItem("access_token");
-        router.push("/login");
+        localStorage.removeItem('access_token');
+        router.push('/login');
         return;
       }
 
+      if (!res.ok) {
+        throw new Error(`Gagal mengambil data (Status: ${res.status})`);
+      }
+
       const data = await res.json();
-      setGroups(data);
+      setGroups(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Gagal mengambil data grup:", err);
+      console.error('Gagal mengambil data grup:', err);
+      setErrorMsg('Gagal terhubung ke server backend (http://localhost:8000). Pastikan server backend sudah berjalan.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     fetchGroups();
-  }, [router]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user_data");
-    router.push("/login");
-  };
+  }, [fetchGroups]);
 
   // Toggle Join/Leave Group API
   const handleToggleJoin = async (groupId: number) => {
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem('access_token');
     try {
       const res = await fetch(`http://localhost:8000/api/groups/${groupId}/toggle-join`, {
-        method: "POST",
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          Accept: "application/json",
+          Accept: 'application/json',
         },
       });
 
       if (res.ok) {
-        fetchGroups(); // Refresh data setelah berhasil bergabung/keluar
+        fetchGroups();
       }
     } catch (err) {
-      console.error("Gagal mengubah keanggotaan grup:", err);
+      console.error('Gagal mengubah keanggotaan grup:', err);
     }
   };
 
@@ -132,15 +130,15 @@ export default function GroupsPage() {
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem('access_token');
 
     try {
-      const res = await fetch("http://localhost:8000/api/groups", {
-        method: "POST",
+      const res = await fetch('http://localhost:8000/api/groups', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-          Accept: "application/json",
+          Accept: 'application/json',
         },
         body: JSON.stringify(newGroup),
       });
@@ -148,17 +146,17 @@ export default function GroupsPage() {
       if (res.ok) {
         setShowModal(false);
         setNewGroup({
-          name: "",
-          course: "Basis Data",
-          description: "",
+          name: '',
+          course: 'Basis Data',
+          description: '',
           max_members: 10,
           is_private: false,
-          schedule: "Setiap Sabtu • 15:00 WIB",
+          schedule: 'Setiap Sabtu • 15:00 WITA',
         });
-        fetchGroups(); // Refresh daftar grup setelah berhasil membuat
+        fetchGroups();
       }
     } catch (err) {
-      console.error("Gagal membuat grup:", err);
+      console.error('Gagal membuat grup:', err);
     } finally {
       setSubmitting(false);
     }
@@ -172,176 +170,143 @@ export default function GroupsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
-      {/* SIDEBAR NAVIGATION */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex sticky top-0 h-screen">
+    <div className="w-full space-y-6">
+      {/* Header Halaman */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <div className="p-6 flex items-center gap-3 border-b border-slate-100">
-            <div className="p-2 bg-blue-600 rounded-xl text-white shadow-sm">
-              <GraduationCap className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-blue-900 tracking-tight">Study Buddy</h1>
-              <p className="text-[10px] text-blue-600 font-medium -mt-1">Learn Together, Grow Together</p>
-            </div>
-          </div>
-
-          <nav className="p-4 space-y-1">
-            <a href="/dashboard" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Home className="w-4 h-4" /> Beranda
-            </a>
-            <a href="/dashboard/find-buddy" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Search className="w-4 h-4" /> Cari Buddy
-            </a>
-            <a href="/dashboard/groups" className="flex items-center gap-3 px-3.5 py-2.5 bg-blue-50 text-blue-600 rounded-xl font-semibold text-sm">
-              <Users className="w-4 h-4" /> Grup
-            </a>
-            <a href="/dashboard/calendar" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Calendar className="w-4 h-4" /> Kalender
-            </a>
-            <a href="/dashboard/materials" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <BookOpen className="w-4 h-4" /> Materi
-            </a>
-            <a href="/dashboard/quizzes" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Award className="w-4 h-4" /> Kuis
-            </a>
-            <a href="/dashboard/tutoring" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <UserCheck className="w-4 h-4" /> Peer Tutoring
-            </a>
-            <a href="/dashboard/notifications" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Bell className="w-4 h-4" /> Notifikasi
-            </a>
-            <a href="/dashboard/profile" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <User className="w-4 h-4" /> Profil
-            </a>
-          </nav>
+          <h1 className="text-xl font-bold text-slate-800">Grup Belajar</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Bergabung atau buat kelompok diskusi untuk belajar bersama rekan lainnya.
+          </p>
         </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Buat Grup Baru
+        </button>
+      </div>
 
-        <div className="p-4 border-t border-slate-100">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium transition-colors">
-            <LogOut className="w-4 h-4" /> Keluar Akun
-          </button>
+      {/* SEARCH BAR */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="relative w-full md:w-96">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari nama grup atau mata kuliah..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-      </aside>
+        <p className="text-xs text-slate-500 hidden sm:block font-medium">
+          Total: <span className="font-bold text-slate-800">{filteredGroups.length} Grup</span>
+        </p>
+      </div>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-10">
-          <h2 className="text-base font-bold text-slate-800">Grup Belajar</h2>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Buat Grup Baru
-          </button>
-        </header>
-
-        <div className="p-6 md:p-8 space-y-6 max-w-7xl">
-          {/* SEARCH BAR */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div className="relative w-full md:w-96">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari nama grup atau mata kuliah..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <p className="text-xs text-slate-500 hidden sm:block font-medium">
-              Total: <span className="font-bold text-slate-800">{filteredGroups.length} Grup</span>
-            </p>
+      {/* ERROR MESSAGE ALERT */}
+      {errorMsg && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-800 text-xs">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Gagal Mengambil Data Backend</p>
+            <p className="mt-0.5 text-amber-700">{errorMsg}</p>
           </div>
+        </div>
+      )}
 
-          {/* LOADING STATE */}
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200">
-              <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
-              <p className="text-xs text-slate-500 font-medium">Memuat data grup dari database...</p>
-            </div>
-          ) : (
-            /* GROUPS LIST GRID */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredGroups.map((group) => {
-                const isJoined = group.members?.some((m) => m.id === currentUserId);
-                return (
-                  <div key={group.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+      {/* LOADING STATE */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-slate-200">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
+          <p className="text-xs text-slate-500 font-medium">Memuat data grup dari database...</p>
+        </div>
+      ) : (
+        /* GROUPS LIST GRID */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredGroups.map((group) => {
+            const isJoined = group.members?.some((m) => m.id === currentUserId);
+            return (
+              <div
+                key={group.id}
+                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <span className="inline-block px-2.5 py-0.5 bg-blue-50 text-blue-700 font-semibold rounded-md text-[10px] mb-2">
-                            {group.course}
-                          </span>
-                          <h3 className="font-bold text-slate-800 text-sm leading-snug">{group.name}</h3>
-                        </div>
-                        {group.is_private ? (
-                          <span className="p-1.5 bg-amber-50 text-amber-600 rounded-lg" title="Grup Privat">
-                            <Lock className="w-3.5 h-3.5" />
-                          </span>
-                        ) : (
-                          <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg" title="Grup Publik">
-                            <Globe className="w-3.5 h-3.5" />
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-xs text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
-                        {group.description || "Tidak ada deskripsi."}
-                      </p>
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-500">
-                        <p>
-                          <strong className="text-slate-700">Ketua Grup:</strong> {group.leader?.name || "Anonim"}
-                        </p>
-                        <p>
-                          <strong className="text-slate-700">Jadwal:</strong> {group.schedule || "Belum ditentukan"}
-                        </p>
-                        <p>
-                          <strong className="text-slate-700">Anggota:</strong> {group.members?.length || 0} / {group.max_members} Orang
-                        </p>
-                      </div>
+                      <span className="inline-block px-2.5 py-0.5 bg-blue-50 text-blue-700 font-semibold rounded-md text-[10px] mb-2">
+                        {group.course}
+                      </span>
+                      <h3 className="font-bold text-slate-800 text-sm leading-snug">{group.name}</h3>
                     </div>
-
-                    <div className="mt-5 pt-3 border-t border-slate-100 flex items-center gap-2">
-                      <button
-                        onClick={() => handleToggleJoin(group.id)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                          isJoined
-                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                            : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                        }`}
-                      >
-                        {isJoined ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Tergabung
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="w-3.5 h-3.5" /> Gabung Grup
-                          </>
-                        )}
-                      </button>
-
-                      {isJoined && (
-                        <button className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl transition-colors" title="Buka Chat Diskusi">
-                          <MessageSquare className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                    {group.is_private ? (
+                      <span className="p-1.5 bg-amber-50 text-amber-600 rounded-lg" title="Grup Privat">
+                        <Lock className="w-3.5 h-3.5" />
+                      </span>
+                    ) : (
+                      <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg" title="Grup Publik">
+                        <Globe className="w-3.5 h-3.5" />
+                      </span>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
 
-          {!loading && filteredGroups.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
-              <p className="text-slate-500 text-sm font-medium">Belum ada grup belajar yang dibuat.</p>
-            </div>
-          )}
+                  <p className="text-xs text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
+                    {group.description || 'Tidak ada deskripsi.'}
+                  </p>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-500">
+                    <p>
+                      <strong className="text-slate-700">Ketua Grup:</strong> {group.leader?.name || 'Anonim'}
+                    </p>
+                    <p>
+                      <strong className="text-slate-700">Jadwal:</strong> {group.schedule || 'Belum ditentukan'}
+                    </p>
+                    <p>
+                      <strong className="text-slate-700">Anggota:</strong> {group.members?.length || 0} / {group.max_members} Orang
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggleJoin(group.id)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                      isJoined
+                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                    }`}
+                  >
+                    {isJoined ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Tergabung
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" /> Gabung Grup
+                      </>
+                    )}
+                  </button>
+
+                  {isJoined && (
+                    <button
+                      className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                      title="Buka Chat Diskusi"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </main>
+      )}
+
+      {!loading && !errorMsg && filteredGroups.length === 0 && (
+        <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
+          <p className="text-slate-500 text-sm font-medium">Belum ada grup belajar yang dibuat.</p>
+        </div>
+      )}
 
       {/* MODAL BUAT GRUP BARU */}
       {showModal && (

@@ -1,393 +1,381 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  Calendar as CalendarIcon,
-  Clock,
-  Plus,
-  Users,
-  MapPin,
-  X,
-  GraduationCap,
-  Home,
-  Search,
   BookOpen,
-  Award,
-  UserCheck,
-  Bell,
-  User,
-  LogOut,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  ExternalLink,
+  Loader2,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  UsersRound,
+  Video,
+  X,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
-interface Event {
+interface Subject {
   id: number;
+  name: string;
+}
+
+interface StudyGroup {
+  id: number;
+  name: string;
+  slug?: string;
+  subject?: Subject | null;
+}
+
+interface StudySession {
+  id: number;
+  host_id: number;
+  study_group_id: number | null;
+  subject_id: number | null;
   title: string;
-  course: string;
+  description?: string | null;
+  meeting_link?: string | null;
+  max_participants: number;
+  scheduled_at: string;
+  duration_minutes: number;
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  participants_count?: number;
+  study_group?: StudyGroup | null;
+  subject?: Subject | null;
+}
+
+interface SessionForm {
+  title: string;
+  study_group_id: string;
   date: string;
   time: string;
-  location: string;
-  type: 'session' | 'quiz' | 'group';
-  attendeesCount?: number;
+  duration_minutes: string;
+  max_participants: string;
+  meeting_link: string;
+  description: string;
+}
+
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+).replace(/\/$/, '');
+
+const TOKEN_KEY = 'meetspace_auth_token';
+
+const emptyForm: SessionForm = {
+  title: '',
+  study_group_id: '',
+  date: '',
+  time: '',
+  duration_minutes: '120',
+  max_participants: '5',
+  meeting_link: '',
+  description: '',
+};
+
+function getToken() {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function getPayload<T>(payload: any): T[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+// Backend memakai dateTime tanpa timezone. API saat ini menampilkan suffix Z,
+// jadi nilai jam/tanggal dipertahankan sebagai wall-clock WITA agar tidak bergeser.
+function splitApiDateTime(value: string) {
+  const clean = value.replace(/Z$/, '');
+  const [datePart, timePart = '00:00:00'] = clean.split('T');
+  return {
+    date: datePart,
+    time: timePart.split('.')[0].slice(0, 5),
+  };
+}
+
+function getDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(date);
+}
+
+function formatIndonesianDate(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  }).format(new Date(year, month - 1, day));
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) return `${minutes} menit`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins ? `${hours}j ${mins}m` : `${hours} jam`;
+}
+
+function getCalendarDays(cursorDate: Date) {
+  const year = cursorDate.getFullYear();
+  const month = cursorDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const offset = (firstDay.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
 }
 
 export default function CalendarPage() {
-  const router = useRouter();
-  const [events, setEvents] = useState<Event[]>([
-    {
-      id: 1,
-      title: 'Sesi Belajar Pemrograman Web',
-      course: 'Pemrograman Web',
-      date: '2026-09-22',
-      time: '19:00 - 21:00 WITA',
-      location: 'Google Meet',
-      type: 'session',
-      attendeesCount: 4,
-    },
-    {
-      id: 2,
-      title: 'Kuis Basis Data - SQL Joins',
-      course: 'Basis Data',
-      date: '2026-09-24',
-      time: '10:00 WITA',
-      location: 'Ruang D.2.1 / Online',
-      type: 'quiz',
-    },
-    {
-      id: 3,
-      title: 'Diskusi Kelompok AI & Machine Learning',
-      course: 'Kecerdasan Buatan',
-      date: '2026-09-25',
-      time: '14:00 - 16:00 WITA',
-      location: 'Perpustakaan Lt. 2',
-      type: 'group',
-      attendeesCount: 5,
-    },
-  ]);
-
+  const todayKey = getDateKey(new Date());
+  const [sessions, setSessions] = useState<StudySession[]>([]);
+  const [groups, setGroups] = useState<StudyGroup[]>([]);
+  const [selectedDate, setSelectedDate] = useState(todayKey);
+  const [cursorDate, setCursorDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    course: 'Pemrograman Web',
-    date: '',
-    time: '',
-    location: '',
-    type: 'session' as 'session' | 'quiz' | 'group',
-  });
+  const [formData, setFormData] = useState<SessionForm>(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user_data');
-    router.push('/login');
-  };
+  const calendarDays = useMemo(() => getCalendarDays(cursorDate), [cursorDate]);
 
-  const handleCreateEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title || !formData.date || !formData.time) return;
+  const sessionRows = useMemo(
+    () => sessions.map((s) => ({ ...s, ...splitApiDateTime(s.scheduled_at) })).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)),
+    [sessions],
+  );
 
-    const newEvent: Event = {
-      id: Date.now(),
-      title: formData.title,
-      course: formData.course,
-      date: formData.date,
-      time: formData.time,
-      location: formData.location || 'Online',
-      type: formData.type,
-      attendeesCount: formData.type === 'quiz' ? undefined : 1,
-    };
+  const upcomingSessions = useMemo(
+    () => sessionRows.filter((s) => s.status !== 'cancelled' && s.date >= todayKey).slice(0, 6),
+    [sessionRows, todayKey],
+  );
 
-    setEvents([...events, newEvent]);
-    setIsModalOpen(false);
-    setFormData({
-      title: '',
-      course: 'Pemrograman Web',
-      date: '',
-      time: '',
-      location: '',
-      type: 'session',
-    });
-  };
+  const selectedSessions = sessionRows.filter((s) => s.date === selectedDate && s.status !== 'cancelled');
 
-  const getTypeBadge = (type: Event['type']) => {
-    switch (type) {
-      case 'session':
-        return <span className="bg-blue-50 text-blue-700 font-semibold text-[10px] px-2.5 py-0.5 rounded-md">Sesi Belajar</span>;
-      case 'quiz':
-        return <span className="bg-amber-50 text-amber-700 font-semibold text-[10px] px-2.5 py-0.5 rounded-md">Kuis / Ujian</span>;
-      case 'group':
-        return <span className="bg-emerald-50 text-emerald-700 font-semibold text-[10px] px-2.5 py-0.5 rounded-md">Kelompok Belajar</span>;
+  const monthSessionCount = sessionRows.filter((s) => s.date.startsWith(`${cursorDate.getFullYear()}-${String(cursorDate.getMonth() + 1).padStart(2, '0')}`)).length;
+  const participantTotal = sessions.reduce((sum, s) => sum + (s.participants_count || 0), 0);
+
+  async function fetchData() {
+    const token = getToken();
+    if (!token) {
+      setError('Token login tidak ditemukan. Silakan login kembali.');
+      setLoading(false);
+      return;
     }
-  };
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const [sessionResponse, groupResponse] = await Promise.all([
+        fetch(`${API_URL}/study-sessions`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        }),
+        fetch(`${API_URL}/groups`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        }),
+      ]);
+
+      if (sessionResponse.status === 401 || groupResponse.status === 401) {
+        throw new Error('Sesi login sudah berakhir. Silakan login kembali.');
+      }
+      if (!sessionResponse.ok) throw new Error('Gagal mengambil data sesi belajar.');
+
+      const sessionPayload = await sessionResponse.json();
+      setSessions(getPayload<StudySession>(sessionPayload));
+
+      if (groupResponse.ok) {
+        const groupPayload = await groupResponse.json();
+        setGroups(getPayload<StudyGroup>(groupPayload));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  function openCreateModal() {
+    setError('');
+    setSuccess('');
+    setFormData({
+      ...emptyForm,
+      study_group_id: groups[0] ? String(groups[0].id) : '',
+      date: selectedDate >= todayKey ? selectedDate : todayKey,
+      time: '19:00',
+    });
+    setIsModalOpen(true);
+  }
+
+  async function handleCreateSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = getToken();
+    if (!token) return setError('Token login tidak ditemukan.');
+    if (!formData.study_group_id) return setError('Pilih grup belajar terlebih dahulu.');
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`${API_URL}/study-sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          study_group_id: Number(formData.study_group_id),
+          title: formData.title,
+          description: formData.description || null,
+          meeting_link: formData.meeting_link || null,
+          max_participants: Number(formData.max_participants),
+          scheduled_at: `${formData.date} ${formData.time}:00`,
+          duration_minutes: Number(formData.duration_minutes),
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        const validationMessage = payload?.message || Object.values(payload?.errors || {}).flat().join(' ');
+        throw new Error(validationMessage || 'Gagal membuat sesi belajar.');
+      }
+
+      setSuccess('Sesi belajar berhasil dibuat.');
+      setIsModalOpen(false);
+      setFormData(emptyForm);
+      await fetchData();
+      setSelectedDate(formData.date);
+      const [year, month] = formData.date.split('-').map(Number);
+      setCursorDate(new Date(year, month - 1, 1));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat membuat sesi.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function moveMonth(offset: number) {
+    setCursorDate((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function goToday() {
+    const now = new Date();
+    setCursorDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDate(getDateKey(now));
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
-      {/* SIDEBAR NAVIGATION */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex sticky top-0 h-screen">
-        <div>
-          <div className="p-6 flex items-center gap-3 border-b border-slate-100">
-            <div className="p-2 bg-blue-600 rounded-xl text-white shadow-sm">
-              <GraduationCap className="w-6 h-6" />
+    <div className="w-full space-y-6 pb-8">
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="absolute -right-16 -top-20 h-44 w-44 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="absolute bottom-0 left-1/2 h-32 w-32 rounded-full bg-indigo-100/60 blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200">
+              <CalendarDays className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-blue-900 tracking-tight">Study Buddy</h1>
-              <p className="text-[10px] text-blue-600 font-medium -mt-1">Learn Together, Grow Together</p>
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-600">Study Planner</span>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700">LIVE API</span>
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Kalender & Jadwal Belajar</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Atur sesi belajar bersama Study Buddy dan lihat agenda yang benar-benar tersimpan di database.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={fetchData} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+            <button type="button" onClick={openCreateModal} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700">
+              <Plus className="h-4 w-4" /> Buat Sesi
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {error && <div className="flex items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><p>{error}</p><button type="button" onClick={() => setError('')}><X className="h-4 w-4" /></button></div>}
+      {success && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{success}</div>}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Agenda Mendatang', upcomingSessions.length, 'Sesi aktif yang akan datang', CalendarDays, 'bg-blue-50 text-blue-600'],
+          ['Sesi Bulan Ini', monthSessionCount, `Pada ${formatMonthLabel(cursorDate)}`, BookOpen, 'bg-indigo-50 text-indigo-600'],
+          ['Grup Saya', groups.length, 'Grup tersedia untuk sesi', UsersRound, 'bg-emerald-50 text-emerald-600'],
+          ['Total Kehadiran', participantTotal, 'Total peserta dari sesi yang diambil', Sparkles, 'bg-amber-50 text-amber-600'],
+        ].map(([label, value, note, Icon, iconClass]) => {
+          const CardIcon = Icon as any;
+          return <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-900">{value}</p></div><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}><CardIcon className="h-5 w-5" /></div></div><p className="mt-3 text-[11px] text-slate-400">{note}</p></div>;
+        })}
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.85fr)]">
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><h2 className="text-base font-bold text-slate-900">{formatMonthLabel(cursorDate)}</h2><p className="mt-1 text-xs text-slate-500">Pilih tanggal untuk melihat sesi.</p></div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={goToday} className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">Hari ini</button>
+              <button type="button" onClick={() => moveMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" onClick={() => moveMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"><ChevronRight className="h-4 w-4" /></button>
             </div>
           </div>
 
-          <nav className="p-4 space-y-1">
-            <a href="/dashboard" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Home className="w-4 h-4" /> Beranda
-            </a>
-            <a href="/dashboard/find-buddy" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Search className="w-4 h-4" /> Cari Buddy
-            </a>
-            <a href="/dashboard/groups" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Users className="w-4 h-4" /> Grup
-            </a>
-            <a href="/dashboard/calendar" className="flex items-center gap-3 px-3.5 py-2.5 bg-blue-50 text-blue-600 rounded-xl font-semibold text-sm">
-              <CalendarIcon className="w-4 h-4" /> Kalender
-            </a>
-            <a href="/dashboard/materials" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <BookOpen className="w-4 h-4" /> Materi
-            </a>
-            <a href="/dashboard/quizzes" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Award className="w-4 h-4" /> Kuis
-            </a>
-            <a href="/dashboard/tutoring" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <UserCheck className="w-4 h-4" /> Peer Tutoring
-            </a>
-            <a href="/dashboard/notifications" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <Bell className="w-4 h-4" /> Notifikasi
-            </a>
-            <a href="/dashboard/profile" className="flex items-center gap-3 px-3.5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors">
-              <User className="w-4 h-4" /> Profil
-            </a>
-          </nav>
+          <div className="grid grid-cols-7 border-b border-slate-100 pb-2">{['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((day) => <div key={day} className="py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">{day}</div>)}</div>
+
+          {loading ? <div className="flex h-[420px] items-center justify-center text-sm text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />Memuat kalender...</div> : <div className="grid grid-cols-7 gap-1 pt-2 sm:gap-2">
+            {calendarDays.map((date) => {
+              const dateKey = getDateKey(date);
+              const sameMonth = date.getMonth() === cursorDate.getMonth();
+              const isToday = dateKey === todayKey;
+              const isSelected = dateKey === selectedDate;
+              const daySessions = sessionRows.filter((s) => s.date === dateKey && s.status !== 'cancelled');
+
+              return <button type="button" key={dateKey} onClick={() => setSelectedDate(dateKey)} className={`group min-h-[78px] rounded-xl border p-2 text-left transition sm:min-h-[88px] ${isSelected ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'} ${!sameMonth ? 'opacity-40' : ''}`}>
+                <div className="flex items-center justify-between"><span className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold ${isToday ? 'bg-blue-600 text-white' : isSelected ? 'bg-white text-blue-700' : 'text-slate-600'}`}>{date.getDate()}</span>{daySessions.length > 0 && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">{daySessions.length}</span>}</div>
+                <div className="mt-2 space-y-1">{daySessions.slice(0, 2).map((s) => <div key={s.id} className="truncate rounded-md bg-white px-1.5 py-1 text-[9px] font-semibold text-slate-600 shadow-sm">{s.time} · {s.title}</div>)}{daySessions.length > 2 && <p className="text-[9px] font-medium text-blue-600">+{daySessions.length - 2} sesi lainnya</p>}</div>
+              </button>;
+            })}
+          </div>}
         </div>
 
-        <div className="p-4 border-t border-slate-100">
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium transition-colors">
-            <LogOut className="w-4 h-4" /> Keluar Akun
-          </button>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Agenda Dipilih</p><h2 className="mt-1 text-lg font-bold text-slate-900">{formatIndonesianDate(selectedDate)}</h2></div><button type="button" onClick={openCreateModal} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white hover:bg-slate-800"><Plus className="h-4 w-4" /></button></div>
+
+          {selectedSessions.length === 0 ? <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm"><CalendarDays className="h-6 w-6" /></div><h3 className="mt-4 text-sm font-bold text-slate-700">Belum ada sesi</h3><p className="mt-1 max-w-xs text-xs leading-5 text-slate-400">Tanggal ini belum memiliki sesi belajar.</p><button type="button" onClick={openCreateModal} className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Buat Sesi Belajar</button></div> : <div className="space-y-3">
+            {selectedSessions.map((session) => <div key={session.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><Video className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">Sesi Belajar</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold capitalize text-emerald-700">{session.status}</span></div><h3 className="mt-2 text-sm font-bold text-slate-900">{session.title}</h3><div className="mt-3 space-y-2 text-[11px] text-slate-500"><div className="flex items-center gap-2"><Clock3 className="h-3.5 w-3.5 text-blue-500" />{session.time} WITA · {formatDuration(session.duration_minutes)}</div><div className="flex items-center gap-2"><UsersRound className="h-3.5 w-3.5 text-emerald-500" />{session.participants_count || 0}/{session.max_participants} peserta</div><div className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5 text-violet-500" /><span className="truncate">{session.subject?.name || 'Mata kuliah'}</span></div><div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-amber-500" /><span className="truncate">{session.study_group?.name || 'Grup belajar'}</span></div></div>{session.meeting_link && <a href={session.meeting_link} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-emerald-700"><Video className="h-3.5 w-3.5" /> Buka Meeting <ExternalLink className="h-3 w-3" /></a>}</div></div></div>)}
+          </div>}
         </div>
-      </aside>
+      </section>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-10">
-          <h2 className="text-base font-bold text-slate-800">Kalender & Jadwal Belajar</h2>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Tambah Jadwal
-          </button>
-        </header>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-5"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-600">Upcoming</p><h2 className="mt-1 text-lg font-bold text-slate-900">Sesi Belajar Mendatang</h2><p className="mt-1 text-xs text-slate-400">Data diambil langsung dari database.</p></div>
+        {upcomingSessions.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><CalendarDays className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600">Belum ada sesi mendatang.</p></div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {upcomingSessions.map((session) => <button type="button" key={session.id} onClick={() => { setSelectedDate(session.date); const [year, month] = session.date.split('-').map(Number); setCursorDate(new Date(year, month - 1, 1)); }} className="group rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="rounded-xl bg-blue-50 px-3 py-2 text-center"><p className="text-[9px] font-bold text-blue-600">{session.date.slice(8, 10)}</p><p className="text-[9px] font-semibold uppercase text-slate-500">{session.date.slice(5, 7)}</p></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold capitalize text-emerald-700">{session.status}</span></div><h3 className="mt-4 line-clamp-2 text-sm font-bold text-slate-900 group-hover:text-blue-700">{session.title}</h3><p className="mt-1 truncate text-[11px] text-slate-400">{session.study_group?.name || 'Grup belajar'}</p><div className="mt-4 flex items-center gap-4 text-[10px] font-medium text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5 text-blue-500" />{session.time}</span><span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5 text-emerald-500" />{session.participants_count || 0}/{session.max_participants}</span></div></button>)}
+        </div>}
+      </section>
 
-        <div className="p-6 md:p-8 space-y-6 max-w-7xl">
-          {/* Grid Konten Sejajar */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
-            {/* Kolom Kiri: Ringkasan Status */}
-            <div className="space-y-4">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 h-5">
-                <CalendarIcon className="w-4 h-4 text-blue-600" />
-                <span>Ringkasan Minggu Ini</span>
-              </h3>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                <div className="p-3 bg-blue-50/60 rounded-xl flex items-center justify-between border border-blue-100">
-                  <span className="text-xs font-medium text-slate-700">Total Agenda</span>
-                  <span className="text-base font-bold text-blue-600">{events.length}</span>
-                </div>
-                <div className="p-3 bg-emerald-50/60 rounded-xl flex items-center justify-between border border-emerald-100">
-                  <span className="text-xs font-medium text-slate-700">Sesi Kelompok</span>
-                  <span className="text-base font-bold text-emerald-600">
-                    {events.filter((e) => e.type === 'group' || e.type === 'session').length}
-                  </span>
-                </div>
-                <div className="p-3 bg-amber-50/60 rounded-xl flex items-center justify-between border border-amber-100">
-                  <span className="text-xs font-medium text-slate-700">Kuis & Tugas</span>
-                  <span className="text-base font-bold text-amber-600">
-                    {events.filter((e) => e.type === 'quiz').length}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-5 rounded-2xl shadow-sm space-y-2">
-                <h3 className="font-bold text-sm">Tip Belajar! 💡</h3>
-                <p className="text-blue-100 text-xs leading-relaxed">
-                  Jadwalkan sesi belajar rutin 2-3 kali seminggu bersama Study Buddy kamu untuk meningkatkan pemahaman materi kuis!
-                </p>
-              </div>
-            </div>
-
-            {/* Kolom Kanan: Daftar Agenda Upcoming */}
-            <div className="lg:col-span-2 space-y-4">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center h-5">
-                Agenda Mendatang
-              </h3>
-
-              {events.length === 0 ? (
-                <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
-                  <CalendarIcon className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p className="text-slate-500 text-xs font-medium">Belum ada agenda belajar yang dijadwalkan.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {getTypeBadge(event.type)}
-                          <span className="text-[10px] text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded-md">
-                            {event.course}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-slate-800 text-sm">{event.title}</h4>
-                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
-                          <div className="flex items-center gap-1">
-                            <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{event.date}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{event.time}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{event.location}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {event.attendeesCount && (
-                        <div className="flex items-center gap-1 text-[11px] text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 self-start sm:self-center font-medium">
-                          <Users className="w-3.5 h-3.5 text-blue-600" />
-                          <span>{event.attendeesCount} Peserta</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-      </main>
-
-      {/* Modal Tambah Jadwal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-sm">Tambah Agenda Belajar</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateEvent} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Judul Agenda</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Belajar Bersama Kuis 1"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Jenis Agenda</label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="session">Sesi Belajar</option>
-                  <option value="group">Kelompok Belajar</option>
-                  <option value="quiz">Kuis / Ujian</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Mata Kuliah</label>
-                <select
-                  value={formData.course}
-                  onChange={(e) => setFormData({ ...formData, course: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Pemrograman Web">Pemrograman Web</option>
-                  <option value="Basis Data">Basis Data</option>
-                  <option value="Kecerdasan Buatan">Kecerdasan Buatan</option>
-                  <option value="Jaringan Komputer">Jaringan Komputer</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Tanggal</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Waktu</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="19:00 WITA"
-                    value={formData.time}
-                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Lokasi / Link</label>
-                <input
-                  type="text"
-                  placeholder="Google Meet / Ruang D.2.1"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
-                >
-                  Simpan Agenda
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {isModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"><div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-6"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Create Session</p><h3 className="mt-1 text-lg font-bold text-slate-900">Buat Sesi Belajar</h3></div><button type="button" onClick={() => !saving && setIsModalOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button></div>
+        <form onSubmit={handleCreateSession} className="space-y-4 p-5 sm:p-6">
+          <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Judul sesi</label><input required type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Contoh: Review Laravel API" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div>
+          <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Grup belajar</label><select required value={formData.study_group_id} onChange={(e) => setFormData({ ...formData, study_group_id: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"><option value="">Pilih grup belajar</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Tanggal</label><input required type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div><div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Jam (WITA)</label><input required type="time" value={formData.time} onChange={(e) => setFormData({ ...formData, time: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div></div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Durasi</label><select value={formData.duration_minutes} onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"><option value="30">30 menit</option><option value="60">1 jam</option><option value="90">1 jam 30 menit</option><option value="120">2 jam</option><option value="180">3 jam</option></select></div><div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Maks. peserta</label><input required min={2} max={100} type="number" value={formData.max_participants} onChange={(e) => setFormData({ ...formData, max_participants: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div></div>
+          <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Link meeting</label><input type="url" value={formData.meeting_link} onChange={(e) => setFormData({ ...formData, meeting_link: e.target.value })} placeholder="https://meet.google.com/..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div>
+          <div><label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">Deskripsi</label><textarea rows={4} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Tuliskan materi atau target belajar..." className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100" /></div>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setIsModalOpen(false)} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Batal</button><button type="submit" disabled={saving || groups.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'Menyimpan...' : 'Simpan Sesi'}</button></div>
+        </form>
+      </div></div>}
     </div>
   );
 }
