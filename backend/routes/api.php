@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Buddy
     Route::get('/buddies', [BuddyController::class, 'index']);
+    Route::post('/buddies/{id}/connect', [BuddyController::class, 'connect']);
 
     // Groups
     Route::get('/groups', [GroupController::class, 'index']);
