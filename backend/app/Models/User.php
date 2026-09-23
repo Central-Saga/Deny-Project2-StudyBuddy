@@ -9,7 +9,6 @@ use App\Models\Profile;
 use App\Models\UserSubject;
 use App\Models\StudyGroup;
 use App\Models\StudySession;
-use App\Models\Group;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -63,11 +62,5 @@ class User extends Authenticatable
     public function hostedSessions(): HasMany
     {
         return $this->hasMany(StudySession::class, 'host_id');
-    }
-
-    // Grup Belajar yang Diikuti
-    public function joinedGroups()
-    {
-        return $this->belongsToMany(Group::class, 'group_user')->withTimestamps();
     }
 }
