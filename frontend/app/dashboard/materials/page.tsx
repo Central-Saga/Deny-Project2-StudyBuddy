@@ -1,418 +1,1034 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
+  AlertCircle,
   BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  Download,
+  FileArchive,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
   Plus,
   Search,
-  X,
   Upload,
-  Download,
   User,
-  CheckCircle2,
-  FileText,
+  X,
 } from 'lucide-react';
+
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+).replace(/\/$/, '');
+
+interface MaterialUser {
+  id: number;
+  name: string;
+  email?: string;
+}
 
 interface Material {
   id: number;
   title: string;
-  course: string;
-  uploader: string;
-  date: string;
-  fileSize: string;
-  description: string;
-  fileName?: string;
-  fileData?: string; // Menyimpan Base64 Data URL asli
-  fileType?: string; // Menyimpan MIME type asli file
+  description: string | null;
+  subject: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+  updated_at: string;
+  user?: MaterialUser;
 }
 
-const DEFAULT_MATERIALS: Material[] = [
-  {
-    id: 1,
-    title: 'Rangkuman Basis Data Lanjut - Normalisasi & SQL',
-    course: 'Basis Data',
-    uploader: 'I Kadek Deny',
-    date: '20 Sep 2026',
-    fileSize: '2.4 MB (PDF)',
-    fileName: 'Rangkuman_Basis_Data.pdf',
-    description: 'Catatan ringkas mengenai teknik normalisasi NF1 hingga NF3 beserta contoh query SQL.',
-  },
-  {
-    id: 2,
-    title: 'Modul Pemrograman Web Next.js 14 App Router',
-    course: 'Pemrograman Web',
-    uploader: 'Andi Wijaya',
-    date: '18 Sep 2026',
-    fileSize: '4.1 MB (PDF)',
-    fileName: 'Modul_Nextjs14.pdf',
-    description: 'Panduan belajar Next.js App Router, layouting, server components, dan fetching API.',
-  },
-];
+interface MaterialsResponse {
+  data: Material[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
 
 export default function MaterialsPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [isMounted, setIsMounted] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
+  const router = useRouter();
 
-  // Form State
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+  const [totalMaterials, setTotalMaterials] = useState(0);
+
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
   const [formData, setFormData] = useState({
     title: '',
-    course: '',
+    subject: '',
     description: '',
     file: null as File | null,
   });
 
-  const fetchMaterialsFromStorage = () => {
-    const savedMaterials = localStorage.getItem('study_materials');
-    if (savedMaterials) {
-      try {
-        setMaterials(JSON.parse(savedMaterials));
-      } catch (e) {
-        setMaterials(DEFAULT_MATERIALS);
-      }
-    } else {
-      setMaterials(DEFAULT_MATERIALS);
-      localStorage.setItem('study_materials', JSON.stringify(DEFAULT_MATERIALS));
+  const getToken = () => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('access_token') || '';
+  };
+
+  const showSuccess = (message: string) => {
+    setSuccess(message);
+
+    setTimeout(() => {
+      setSuccess('');
+    }, 3000);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes <= 0) {
+      return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.floor(Math.log(bytes) / Math.log(1024));
+
+    return `${(bytes / Math.pow(1024, index)).toFixed(
+      index === 0 ? 0 : 1
+    )} ${units[index]}`;
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(dateString));
+  };
+
+  const getFileTypeLabel = (type: string) => {
+    if (!type) return 'FILE';
+    return type.toUpperCase();
+  };
+
+  const getFileTypeStyle = (type: string) => {
+    switch (type?.toLowerCase()) {
+      case 'pdf':
+        return 'bg-red-50 text-red-700 border-red-100';
+
+      case 'doc':
+      case 'docx':
+        return 'bg-blue-50 text-blue-700 border-blue-100';
+
+      case 'ppt':
+      case 'pptx':
+        return 'bg-amber-50 text-amber-700 border-amber-100';
+
+      case 'zip':
+      case 'rar':
+        return 'bg-violet-50 text-violet-700 border-violet-100';
+
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+
+      default:
+        return 'bg-slate-50 text-slate-600 border-slate-100';
     }
   };
 
-  useEffect(() => {
-    setIsMounted(true);
-    fetchMaterialsFromStorage();
+  const getFileIcon = (type: string) => {
+    switch (type?.toLowerCase()) {
+      case 'pdf':
+      case 'doc':
+      case 'docx':
+      case 'ppt':
+      case 'pptx':
+        return <FileText className="h-5 w-5" />;
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'study_materials') {
-        fetchMaterialsFromStorage();
-      }
-    };
+      case 'zip':
+      case 'rar':
+        return <FileArchive className="h-5 w-5" />;
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return <ImageIcon className="h-5 w-5" />;
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+      default:
+        return <FileText className="h-5 w-5" />;
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
+  const fetchMaterials = useCallback(
+    async (page = 1) => {
+      const token = getToken();
 
-      // Batasi ukuran file lokal ke ~3.5MB agar muat di localStorage browser
-      if (selectedFile.size > 3.5 * 1024 * 1024) {
-        alert('Untuk penyimpanan lokal browser, batas ukuran file adalah 3.5 MB.');
-        e.target.value = '';
+      if (!token) {
+        router.push('/login');
         return;
       }
-      setFormData((prev) => ({ ...prev, file: selectedFile }));
-    }
+
+      setLoading(true);
+      setError('');
+
+      try {
+        const params = new URLSearchParams();
+
+        params.append('page', String(page));
+
+        if (searchQuery.trim()) {
+          params.append('search', searchQuery.trim());
+        }
+
+        const response = await fetch(
+          `${API_URL}/materials?${params.toString()}`,
+          {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            cache: 'no-store',
+          }
+        );
+
+        if (response.status === 401) {
+          localStorage.removeItem('access_token');
+          router.push('/login');
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Gagal mengambil data materi (${response.status})`
+          );
+        }
+
+        const result: MaterialsResponse = await response.json();
+
+        setMaterials(Array.isArray(result.data) ? result.data : []);
+        setCurrentPage(result.current_page || 1);
+        setLastPage(result.last_page || 1);
+        setTotalMaterials(result.total || 0);
+      } catch (err) {
+        console.error('Gagal mengambil materi:', err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Gagal mengambil data materi.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [router, searchQuery]
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchMaterials(1);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [fetchMaterials]);
+
+  const handleInputChange = (
+    event: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = event.target;
+
+    setFormData((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
   };
 
-  // Membaca file fisik menjadi format DataURL (Base64) tanpa mengubah format file
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-      reader.readAsDataURL(file);
-    });
-  };
+  const handleFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const selectedFile = event.target.files?.[0];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title || !formData.course) return;
-
-    if (!formData.file) {
-      alert('Silakan pilih file materi terlebih dahulu!');
+    if (!selectedFile) {
       return;
     }
 
-    let currentUploaderName = 'Mahasiswa';
-    const savedUser = localStorage.getItem('user_data');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed.name) currentUploaderName = parsed.name;
-      } catch (e) {
-        console.error('Error reading user data');
-      }
+    // Sama dengan validasi backend: maksimal 10 MB
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      alert('Ukuran file maksimal 10 MB.');
+      event.target.value = '';
+      return;
     }
+
+    setFormData((previous) => ({
+      ...previous,
+      file: selectedFile,
+    }));
+  };
+
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    if (!formData.title.trim()) {
+      alert('Judul materi wajib diisi.');
+      return;
+    }
+
+    if (!formData.subject.trim()) {
+      alert('Mata kuliah wajib diisi.');
+      return;
+    }
+
+    if (!formData.file) {
+      alert('Silakan pilih file materi terlebih dahulu.');
+      return;
+    }
+
+    const token = getToken();
+
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
+    setUploading(true);
+    setError('');
 
     try {
-      // Pembacaan Data Asli File
-      const fileDataUrl = await readFileAsBase64(formData.file);
-      const fileName = formData.file.name;
-      const fileType = formData.file.type;
-      
-      // Hitung Format Ukuran File & Ekstensi
-      const ext = fileName.split('.').pop()?.toUpperCase() || 'FILE';
-      const sizeMB = (formData.file.size / (1024 * 1024)).toFixed(1);
-      const fileSizeFormatted = `${sizeMB} MB (${ext})`;
+      const uploadData = new FormData();
 
-      const newMaterial: Material = {
-        id: Date.now(),
-        title: formData.title,
-        course: formData.course,
-        uploader: currentUploaderName,
-        date: 'Hari ini',
-        fileSize: fileSizeFormatted,
-        fileName: fileName,
-        fileData: fileDataUrl,
-        fileType: fileType,
-        description: formData.description || 'Tidak ada deskripsi.',
-      };
+      uploadData.append('title', formData.title.trim());
+      uploadData.append('subject', formData.subject.trim());
+      uploadData.append(
+        'description',
+        formData.description.trim()
+      );
+      uploadData.append('file', formData.file);
 
-      const existingRaw = localStorage.getItem('study_materials');
-      let currentList: Material[] = DEFAULT_MATERIALS;
-      if (existingRaw) {
-        try {
-          currentList = JSON.parse(existingRaw);
-        } catch (e) {
-          currentList = DEFAULT_MATERIALS;
-        }
+      const response = await fetch(`${API_URL}/materials`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: uploadData,
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        router.push('/login');
+        return;
       }
 
-      const updatedList = [newMaterial, ...currentList];
+      const result = await response.json();
 
-      localStorage.setItem('study_materials', JSON.stringify(updatedList));
-      setMaterials(updatedList);
-      showNotification('Materi berhasil diunggah!');
+      if (!response.ok) {
+        if (response.status === 422 && result.errors) {
+          const firstError = Object.values(result.errors)[0];
 
-      setFormData({ title: '', course: '', description: '', file: null });
+          if (
+            Array.isArray(firstError) &&
+            firstError.length > 0
+          ) {
+            throw new Error(String(firstError[0]));
+          }
+        }
+
+        throw new Error(
+          result.message || 'Gagal mengunggah materi.'
+        );
+      }
+
+      setFormData({
+        title: '',
+        subject: '',
+        description: '',
+        file: null,
+      });
+
       setIsModalOpen(false);
+
+      showSuccess('Materi berhasil diunggah.');
+
+      await fetchMaterials(1);
     } catch (err) {
-      alert('Gagal memproses file. Pastikan ukuran file tidak melebihi batas.');
+      console.error('Gagal upload materi:', err);
+
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Gagal mengunggah materi.'
+      );
+    } finally {
+      setUploading(false);
     }
   };
 
-  // Fungsi Mengunduh File Asli Sesuai Ekstensi Aslinya
-  const handleDownload = (item: Material) => {
-    if (item.fileData) {
+  const handleDownload = async (material: Material) => {
+    const token = getToken();
+
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
+    setDownloadingId(material.id);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/materials/${material.id}/download`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: '*/*',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        router.push('/login');
+        return;
+      }
+
+      if (!response.ok) {
+        let message = 'Gagal mengunduh materi.';
+
+        try {
+          const result = await response.json();
+
+          if (result.message) {
+            message = result.message;
+          }
+        } catch {
+          // Response bukan JSON
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const extension =
+        material.file_type?.toLowerCase() || 'file';
+
+      const fileName = `${material.title}.${extension}`;
+
       const link = document.createElement('a');
-      link.href = item.fileData;
-      link.download = item.fileName || `${item.title}`;
+
+      link.href = objectUrl;
+      link.download = fileName;
+
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      showNotification(`Mengunduh ${item.fileName || item.title}...`);
-    } else {
-      // Fallback untuk data dummy awal jika belum ada file terunggah
-      alert(`Ini adalah sampel data demo "${item.fileName}". Unggah file asli kamu (PDF/Word/PPT) untuk menguji unduhan nyata.`);
+      link.remove();
+
+      URL.revokeObjectURL(objectUrl);
+
+      showSuccess(`Mengunduh ${fileName}...`);
+    } catch (err) {
+      console.error('Gagal download:', err);
+
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Gagal mengunduh file.'
+      );
+    } finally {
+      setDownloadingId(null);
     }
   };
 
-  const showNotification = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
+  const handlePageChange = (page: number) => {
+    if (
+      page < 1 ||
+      page > lastPage ||
+      page === currentPage
+    ) {
+      return;
+    }
+
+    fetchMaterials(page);
   };
 
-  const filteredMaterials = materials.filter(
-    (item) =>
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.course.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  if (!isMounted) return null;
-
   return (
-    <div className="space-y-6 w-full relative">
-      {/* Toast Notifikasi */}
-      {notification && (
-        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm border border-slate-700 animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>{notification}</span>
+    <div className="w-full space-y-6 pb-8">
+      {/* ================= HEADER ================= */}
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="absolute -right-16 -top-20 h-44 w-44 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="absolute bottom-0 left-1/2 h-28 w-28 rounded-full bg-indigo-100/50 blur-3xl" />
+
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200">
+              <BookOpen className="h-6 w-6" />
+            </div>
+
+            <div>
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-600">
+                  Study Materials
+                </span>
+
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                  LIVE API
+                </span>
+              </div>
+
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                Materi Belajar
+              </h1>
+
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+                Temukan, bagikan, dan unduh materi belajar
+                yang tersimpan langsung di server Study Buddy.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Unggah Materi
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ================= SUCCESS ================= */}
+      {success && (
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white">
+            <CheckCircle2 className="h-4 w-4" />
+          </div>
+
+          <span className="font-medium">
+            {success}
+          </span>
         </div>
       )}
 
-      {/* Header & Banner */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Berbagi Materi</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Temukan dan bagikan materi belajar dengan mudah.
-          </p>
+      {/* ================= ERROR ================= */}
+      {error && (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+          <div className="flex-1">
+            <p className="font-semibold">
+              Terjadi kesalahan
+            </p>
+
+            <p className="mt-1 text-xs leading-5">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => fetchMaterials(currentPage)}
+              className="mt-2 text-xs font-bold underline underline-offset-2"
+            >
+              Coba lagi
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Unggah Materi
-        </button>
-      </div>
+      )}
 
-      {/* Bar Pencarian */}
-      <div className="relative w-full">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Cari judul materi atau mata kuliah..."
-          className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        />
-      </div>
+      {/* ================= STAT CARDS ================= */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Total Materi
+              </p>
 
-      {/* Daftar Materi */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredMaterials.map((item) => (
-          <div
-            key={item.id}
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between gap-4 hover:border-blue-200 transition-all"
-          >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <span className="px-3 py-1 bg-blue-50 text-blue-600 font-semibold text-[11px] rounded-full border border-blue-100">
-                  {item.course}
-                </span>
-                <span className="text-[11px] text-slate-400">{item.date}</span>
-              </div>
-              <h3 className="font-bold text-slate-800 text-base leading-snug">
-                {item.title}
-              </h3>
-              <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                {item.description}
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {totalMaterials}
               </p>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-              <div className="flex items-center gap-2 text-slate-500">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span className="font-medium text-[11px]">
-                  Oleh: <strong className="text-slate-700">{item.uploader}</strong>
-                </span>
-              </div>
-              
-              {/* Tombol Unduh */}
-              <button
-                onClick={() => handleDownload(item)}
-                className="flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" /> Unduh ({item.fileSize})
-              </button>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <BookOpen className="h-5 w-5" />
             </div>
           </div>
-        ))}
-      </div>
 
-      {filteredMaterials.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-2xl border border-slate-100">
-          <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-600">
-            Tidak ada materi ditemukan
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Coba kata kunci lain atau unggah materi baru.
+          <p className="mt-3 text-[11px] text-slate-400">
+            Tersimpan di database
           </p>
         </div>
-      )}
 
-      {/* ================= MODAL UNGGAH MATERI ================= */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Ditampilkan
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {materials.length}
+              </p>
+            </div>
+
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+              <FileText className="h-5 w-5" />
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] text-slate-400">
+            Materi pada halaman ini
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Halaman
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {currentPage}
+              </p>
+            </div>
+
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <CalendarDays className="h-5 w-5" />
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] text-slate-400">
+            Dari {lastPage} halaman
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Batas Upload
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                10 MB
+              </p>
+            </div>
+
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Upload className="h-5 w-5" />
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] text-slate-400">
+            Sesuai validasi backend
+          </p>
+        </div>
+      </section>
+
+      {/* ================= SEARCH ================= */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">
+              Cari Materi
+            </h2>
+
+            <p className="mt-1 text-[11px] text-slate-400">
+              Pencarian dilakukan langsung melalui API.
+            </p>
+          </div>
+
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Cari judul, mata kuliah, atau deskripsi..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ================= MATERIAL LIST ================= */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">
+              Koleksi Materi
+            </p>
+
+            <h2 className="mt-1 text-lg font-bold text-slate-900">
+              Materi Terbaru
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Daftar materi diambil langsung dari database.
+            </p>
+          </div>
+
+          <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-500">
+            {materials.length} ditampilkan
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="flex min-h-[360px] flex-col items-center justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            </div>
+
+            <p className="mt-4 text-sm font-semibold text-slate-700">
+              Memuat materi...
+            </p>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Mengambil data dari server
+            </p>
+          </div>
+        ) : materials.length === 0 ? (
+          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+              <BookOpen className="h-6 w-6 text-slate-300" />
+            </div>
+
+            <h3 className="mt-4 text-sm font-bold text-slate-700">
+              Belum ada materi
+            </h3>
+
+            <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
+              Tidak ada materi yang sesuai dengan
+              pencarian kamu.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Unggah Materi
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {materials.map((material) => (
+                <article
+                  key={material.id}
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+                >
+                  {/* Card Top */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">
+                        {material.subject}
+                      </span>
+
+                      <span
+                        className={`rounded-md border px-2.5 py-1 text-[10px] font-bold ${getFileTypeStyle(
+                          material.file_type
+                        )}`}
+                      >
+                        {getFileTypeLabel(material.file_type)}
+                      </span>
+                    </div>
+
+                    <span className="shrink-0 text-[10px] font-medium text-slate-400">
+                      {formatDate(material.created_at)}
+                    </span>
+                  </div>
+
+                  {/* File Icon + Title */}
+                  <div className="mt-5 flex items-start gap-3">
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${getFileTypeStyle(
+                        material.file_type
+                      )}`}
+                    >
+                      {getFileIcon(material.file_type)}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-2 text-sm font-bold leading-5 text-slate-900 transition group-hover:text-blue-700">
+                        {material.title}
+                      </h3>
+
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {formatFileSize(material.file_size)} ·{' '}
+                        {getFileTypeLabel(material.file_type)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <p className="mt-4 line-clamp-2 text-xs leading-5 text-slate-500">
+                    {material.description ||
+                      'Tidak ada deskripsi untuk materi ini.'}
+                  </p>
+
+                  {/* Divider */}
+                  <div className="my-5 border-t border-slate-100" />
+
+                  {/* Footer */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100">
+                        <User className="h-4 w-4 text-slate-500" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                          Diunggah oleh
+                        </p>
+
+                        <p className="truncate text-xs font-semibold text-slate-700">
+                          {material.user?.name || 'Mahasiswa'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(material)}
+                      disabled={
+                        downloadingId === material.id
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {downloadingId === material.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Mengunduh...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          Unduh Materi
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {lastPage > 1 && (
+              <div className="mt-6 flex flex-col items-center justify-between gap-3 border-t border-slate-100 pt-5 sm:flex-row">
+                <p className="text-xs text-slate-400">
+                  Halaman{' '}
+                  <span className="font-semibold text-slate-700">
+                    {currentPage}
+                  </span>{' '}
+                  dari{' '}
+                  <span className="font-semibold text-slate-700">
+                    {lastPage}
+                  </span>
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePageChange(currentPage - 1)
+                    }
+                    disabled={currentPage === 1}
+                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Sebelumnya
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePageChange(currentPage + 1)
+                    }
+                    disabled={currentPage === lastPage}
+                    className="rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* ================= UPLOAD MODAL ================= */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl relative space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white shadow-2xl">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="font-bold text-slate-800 text-lg">
-                Unggah Materi Belajar
-              </h3>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">
+                  Study Materials
+                </p>
+
+                <h3 className="mt-1 text-lg font-bold text-slate-900">
+                  Unggah Materi
+                </h3>
+              </div>
+
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                type="button"
+                onClick={() =>
+                  !uploading && setIsModalOpen(false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Form */}
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 p-5"
+            >
+              {/* Title */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Materi <span className="text-red-500">*</span>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                  Judul Materi
+                  <span className="ml-1 text-red-500">
+                    *
+                  </span>
                 </label>
+
                 <input
                   type="text"
                   name="title"
                   required
                   value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="Contoh: Rangkuman Aljabar Linier Bab 3"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="Contoh: Rangkuman Basis Data"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
 
+              {/* Subject */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mata Kuliah <span className="text-red-500">*</span>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                  Mata Kuliah
+                  <span className="ml-1 text-red-500">
+                    *
+                  </span>
                 </label>
+
                 <input
                   type="text"
-                  name="course"
+                  name="subject"
                   required
-                  value={formData.course}
+                  value={formData.subject}
                   onChange={handleInputChange}
-                  placeholder="Contoh: Basis Data, Pemrograman Web"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="Contoh: Pemrograman Web"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
 
+              {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Deskripsi Singkat
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                  Deskripsi
                 </label>
+
                 <textarea
                   name="description"
-                  rows={3}
+                  rows={4}
                   value={formData.description}
                   onChange={handleInputChange}
-                  placeholder="Jelaskan ringkasan isi materi ini..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="Tuliskan ringkasan isi materi..."
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
 
+              {/* File */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Pilih File (PDF, DOCX, PPTX) <span className="text-red-500">*</span>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                  File Materi
+                  <span className="ml-1 text-red-500">
+                    *
+                  </span>
                 </label>
-                <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-blue-400 transition-colors bg-slate-50 relative">
+
+                <div className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 text-center transition hover:border-blue-300 hover:bg-blue-50/30">
                   <input
                     type="file"
                     required
+                    disabled={uploading}
                     onChange={handleFileChange}
-                    accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.zip,.rar,.png,.jpg,.jpeg"
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.rar,.jpg,.jpeg,.png"
+                    className="absolute inset-0 cursor-pointer opacity-0"
                   />
-                  <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                  <p className="text-xs text-slate-600 font-medium">
+
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm">
+                    <Upload className="h-5 w-5 text-blue-600" />
+                  </div>
+
+                  <p className="mt-3 text-xs font-semibold text-slate-700">
                     {formData.file
                       ? formData.file.name
-                      : 'Klik untuk memilih file PDF / Word / PowerPoint / Gambar'}
+                      : 'Klik untuk memilih file'}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Maksimal ukuran file: 3.5 MB
+
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    PDF, DOC, DOCX, PPT, PPTX, ZIP, RAR, JPG,
+                    PNG
                   </p>
+
+                  <span className="mt-3 inline-flex rounded-full bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 shadow-sm">
+                    Maksimal 10 MB
+                  </span>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
                   type="button"
+                  disabled={uploading}
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-medium transition-colors"
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   Batal
                 </button>
+
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium shadow-sm transition-colors"
+                  disabled={uploading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Simpan & Unggah
+                  {uploading && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  {uploading
+                    ? 'Mengunggah...'
+                    : 'Simpan & Unggah'}
                 </button>
               </div>
             </form>
