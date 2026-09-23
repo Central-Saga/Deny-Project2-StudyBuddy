@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || '/api'
+).replace(/\/$/, '');
+
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -31,7 +35,7 @@ export default function ProfilePage() {
     }
 
     try {
-      const res = await fetch('http://localhost:8000/api/me', {
+      const res = await fetch(`${API_URL}/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
@@ -61,7 +65,7 @@ export default function ProfilePage() {
     } catch (err) {
       console.error('Gagal mengambil profil:', err);
       setErrorMsg(
-        'Gagal terhubung ke server backend (http://localhost:8000). Pastikan server backend sudah berjalan.'
+        'Gagal terhubung ke server backend. Pastikan server backend sudah berjalan.'
       );
     } finally {
       setLoading(false);
@@ -87,7 +91,7 @@ export default function ProfilePage() {
       .filter((s) => s.length > 0);
 
     try {
-      const res = await fetch('http://localhost:8000/api/profile', {
+      const res = await fetch(`${API_URL}/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

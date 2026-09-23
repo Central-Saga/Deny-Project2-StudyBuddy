@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
+
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || '/api'
+).replace(/\/$/, '');
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +29,7 @@ export default function LoginPage() {
 
     try {
       // Panggil API Login Backend Laravel
-      const res = await fetch("http://localhost:8000/api/login", {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
