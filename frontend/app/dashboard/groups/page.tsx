@@ -59,7 +59,7 @@ interface Group {
 }
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+  process.env.NEXT_PUBLIC_API_URL || '/api'
 ).replace(/\/$/, '');
 
 export default function GroupsPage() {
@@ -121,7 +121,7 @@ export default function GroupsPage() {
 
     try {
       const [groupsRes, subjectsRes] = await Promise.all([
-        fetch(`${API_URL}/api/groups`, {
+        fetch(`${API_URL}/groups`, {
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/json',
@@ -129,7 +129,7 @@ export default function GroupsPage() {
           cache: 'no-store',
         }),
 
-        fetch(`${API_URL}/api/subjects`, {
+        fetch(`${API_URL}/subjects`, {
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/json',
@@ -193,7 +193,7 @@ export default function GroupsPage() {
       setErrorMsg(null);
 
       const res = await fetch(
-        `${API_URL}/api/groups/${groupId}/toggle-join`,
+        `${API_URL}/groups/${groupId}/toggle-join`,
         {
           method: 'POST',
           headers: {
@@ -258,7 +258,7 @@ export default function GroupsPage() {
     setErrorMsg(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/groups`, {
+      const res = await fetch(`${API_URL}/groups`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

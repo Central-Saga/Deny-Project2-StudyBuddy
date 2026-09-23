@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+
 import {
   Search,
   UserPlus,
@@ -11,6 +12,10 @@ import {
   Sparkles,
   BookOpen,
 } from 'lucide-react';
+
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || '/api'
+).replace(/\/$/, '');
 
 interface Buddy {
   id: number;
@@ -47,7 +52,7 @@ export default function FindBuddyPage() {
         queryParams.append('course', selectedCourse);
       }
 
-      const res = await fetch(`http://localhost:8000/api/buddies?${queryParams.toString()}`, {
+      const res = await fetch(`${API_URL}/buddies?${queryParams.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
@@ -62,7 +67,7 @@ export default function FindBuddyPage() {
       setBuddies(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Gagal mengambil data buddy:', err);
-      setErrorMsg('Gagal terhubung ke server backend (http://localhost:8000). Pastikan server backend sudah berjalan.');
+      setErrorMsg('Gagal terhubung ke server backend. Pastikan server backend sudah berjalan.');
     } finally {
       setLoading(false);
     }
@@ -76,7 +81,7 @@ export default function FindBuddyPage() {
   const handleConnect = async (buddyId: number) => {
     const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch(`http://localhost:8000/api/buddies/${buddyId}/connect`, {
+      const res = await fetch(`${API_URL}/buddies/${buddyId}/connect`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

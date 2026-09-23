@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, GraduationCap, Lock, Mail, User } from "lucide-react";
 
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || '/api'
+).replace(/\/$/, '');
+
 export default function RegisterPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -24,7 +28,7 @@ export default function RegisterPage() {
     setErrorMessage("");
 
     try {
-      const response = await fetch("http://localhost:8000/api/register", {
+      const response = await fetch(`${API_URL}/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
