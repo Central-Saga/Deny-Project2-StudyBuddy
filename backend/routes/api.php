@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\BuddyController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\MaterialController;
@@ -15,6 +16,8 @@ Route::post('/login', [AuthController::class, 'login']);
 
 // Protected Routes
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/subjects', [SubjectController::class, 'index']);
 
     // Authentication
     Route::get('/me', [AuthController::class, 'me']);
