@@ -19,7 +19,6 @@ class GroupController extends Controller
             'subject:id,name',
             'members.user:id,name',
         ])
-        ->whereNull('deleted_at')
         ->latest()
         ->get();
 
