@@ -10,15 +10,13 @@ return new class extends Migration
     {
         Schema::create('materials', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('uploader_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('subject_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('study_group_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('title');
             $table->text('description')->nullable();
+            $table->string('subject');
             $table->string('file_path');
             $table->string('file_type');
-            $table->unsignedBigInteger('file_size'); // byte
-            $table->unsignedInteger('downloads_count')->default(0);
+            $table->integer('file_size');
             $table->timestamps();
         });
     }
