@@ -12,6 +12,8 @@ use App\Http\Controllers\SessionParticipantController;
 use App\Http\Controllers\QuizController;
 use App\Http\Controllers\TutoringController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\MaterialReportController;
+use App\Http\Controllers\TutoringReviewController;
 
 Route::prefix('v1')->group(function () {
 
@@ -112,6 +114,10 @@ Route::prefix('v1')->group(function () {
             '/tutoring/requests/{id}/status',
             [TutoringController::class, 'updateStatus']
         );
+        Route::post(
+            '/tutoring/requests/{tutoringRequest}/reviews',
+            [TutoringReviewController::class, 'store']
+        );
 
         // Notifications
         Route::get(
@@ -125,6 +131,17 @@ Route::prefix('v1')->group(function () {
         Route::post(
             '/notifications/read-all',
             [NotificationController::class, 'markAllRead']
+        );
+
+        // Material Reports
+        Route::get(
+            '/material-reports',
+            [MaterialReportController::class, 'index']
+        );
+
+        Route::post(
+            '/materials/{material}/reports',
+            [MaterialReportController::class, 'store']
         );
     });
 });
