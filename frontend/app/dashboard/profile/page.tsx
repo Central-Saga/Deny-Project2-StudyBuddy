@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || '/api'
+  process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 ).replace(/\/$/, '');
 
 export default function ProfilePage() {

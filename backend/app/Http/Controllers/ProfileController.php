@@ -2,26 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Requests\UpdateProfileRequest;
+use App\Http\Resources\UserResource;
 
 class ProfileController extends Controller
 {
-    public function update(Request $request)
+    public function update(UpdateProfileRequest $request)
     {
         $user = $request->user();
 
-        $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'course' => 'nullable|string|max:255',
-            'skills' => 'nullable|array',
-            'bio' => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         $user->update($validated);
 
+        $user->load('profile');
+
         return response()->json([
             'message' => 'Profil berhasil diperbarui',
-            'user' => $user
+            'user' => (new UserResource($user))
+                ->resolve($request),
         ]);
     }
 }

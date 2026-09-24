@@ -10,55 +10,61 @@ use App\Http\Controllers\MaterialController;
 use App\Http\Controllers\StudySessionController;
 use App\Http\Controllers\SessionParticipantController;
 
-// Public Routes
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::prefix('v1')->group(function () {
 
-// Protected Routes
-Route::middleware('auth:sanctum')->group(function () {
+    // Public Routes
+    Route::post('/register', [AuthController::class, 'register'])
+        ->middleware('throttle:5,1');
 
-    Route::get('/subjects', [SubjectController::class, 'index']);
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:5,1');
 
-    // Authentication
-    Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/logout', [AuthController::class, 'logout']);
+    // Protected Routes
+    Route::middleware('auth:sanctum')->group(function () {
 
-    // Study Sessions
-   Route::apiResource('study-sessions', StudySessionController::class)
-    ->parameters([
-        'study-sessions' => 'studySession',
-    ]);
-    
-    Route::post(
-        '/study-sessions/{studySession}/join',
-        [SessionParticipantController::class, 'join']
-    );
+        Route::get('/subjects', [SubjectController::class, 'index']);
 
-    Route::post(
-        '/study-sessions/{studySession}/leave',
-        [SessionParticipantController::class, 'leave']
-    );
+        // Authentication
+        Route::get('/me', [AuthController::class, 'me']);
+        Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Materials
-    Route::apiResource('materials', MaterialController::class);
+        // Study Sessions
+        Route::apiResource('study-sessions', StudySessionController::class)
+            ->parameters([
+                'study-sessions' => 'studySession',
+            ]);
 
-    Route::get(
-        'materials/{material}/download',
-        [MaterialController::class, 'download']
-    );
+        Route::post(
+            '/study-sessions/{studySession}/join',
+            [SessionParticipantController::class, 'join']
+        );
 
-    // Profile
-    Route::put('/profile', [ProfileController::class, 'update']);
+        Route::post(
+            '/study-sessions/{studySession}/leave',
+            [SessionParticipantController::class, 'leave']
+        );
 
-    // Buddy
-    Route::get('/buddies', [BuddyController::class, 'index']);
-    Route::post('/buddies/{id}/connect', [BuddyController::class, 'connect']);
+        // Materials
+        Route::apiResource('materials', MaterialController::class);
 
-    // Groups
-    Route::get('/groups', [GroupController::class, 'index']);
-    Route::post('/groups', [GroupController::class, 'store']);
-    Route::post(
-        '/groups/{id}/toggle-join',
-        [GroupController::class, 'joinToggle']
-    );
+        Route::get(
+            'materials/{material}/download',
+            [MaterialController::class, 'download']
+        );
+
+        // Profile
+        Route::put('/profile', [ProfileController::class, 'update']);
+
+        // Buddy
+        Route::get('/buddies', [BuddyController::class, 'index']);
+        Route::post('/buddies/{id}/connect', [BuddyController::class, 'connect']);
+
+        // Groups
+        Route::get('/groups', [GroupController::class, 'index']);
+        Route::post('/groups', [GroupController::class, 'store']);
+        Route::post(
+            '/groups/{id}/toggle-join',
+            [GroupController::class, 'joinToggle']
+        );
+    });
 });

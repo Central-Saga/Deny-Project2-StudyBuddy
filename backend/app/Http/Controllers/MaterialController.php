@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreMaterialRequest;
+use App\Http\Resources\MaterialResource;
 use App\Models\Material;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -31,37 +33,36 @@ class MaterialController extends Controller
             $query->where('subject', $request->subject);
         }
 
-        return response()->json($query->paginate(12));
+        return MaterialResource::collection(
+            $query->paginate(12)
+        );
     }
 
     /**
      * Upload materi baru
      */
-    public function store(Request $request)
+    public function store(StoreMaterialRequest $request)
     {
-        $request->validate([
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'subject'     => 'required|string|max:100',
-            'file'        => 'required|file|mimes:pdf,doc,docx,ppt,pptx,zip,rar,jpg,png|max:10240',
-        ]);
+        $validated = $request->validated();
 
         $file = $request->file('file');
         $path = $file->store('materials', 'public');
 
         $material = Material::create([
-            'user_id'     => $request->user()->id,
-            'title'       => $request->title,
-            'description' => $request->description,
-            'subject'     => $request->subject,
-            'file_path'   => $path,
-            'file_type'   => $file->getClientOriginalExtension(),
-            'file_size'   => $file->getSize(),
+            'user_id' => $request->user()->id,
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'subject' => $validated['subject'],
+            'file_path' => $path,
+            'file_type' => $file->getClientOriginalExtension(),
+            'file_size' => $file->getSize(),
         ]);
 
         return response()->json([
-            'message'  => 'Materi berhasil diunggah!',
-            'material' => $material->load('user:id,name,email'),
+            'message' => 'Materi berhasil diunggah!',
+            'material' => new MaterialResource(
+                $material->load('user:id,name,email')
+            ),
         ], 201);
     }
 
@@ -70,7 +71,7 @@ class MaterialController extends Controller
      */
     public function show(Material $material)
     {
-        return response()->json(
+        return new MaterialResource(
             $material->load('user:id,name,email')
         );
     }

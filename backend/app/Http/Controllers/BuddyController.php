@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\BuddyConnectionResource;
+use App\Http\Resources\BuddyUserResource;
 use App\Models\BuddyConnection;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -60,7 +62,9 @@ class BuddyController extends Controller
             });
         }
 
-        return response()->json($buddies);
+        return BuddyUserResource::collection($buddies)
+            ->response()
+            ->getData(true);
     }
 
     public function connect(Request $request, int $id)
@@ -104,12 +108,15 @@ class BuddyController extends Controller
             'status' => 'pending',
         ]);
 
+        $connection->load([
+            'requester:id,name,email',
+            'receiver:id,name,email',
+        ]);
+
         return response()->json([
             'message' => 'Permintaan koneksi berhasil dikirim.',
-            'data' => $connection->load([
-                'requester:id,name,email',
-                'receiver:id,name,email',
-            ]),
+            'data' => (new BuddyConnectionResource($connection))
+                ->resolve($request),
         ], 201);
     }
 }

@@ -59,7 +59,7 @@ interface SessionForm {
 }
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || '/api'
+  process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 ).replace(/\/$/, '');
 
 const TOKEN_KEY = 'meetspace_auth_token';

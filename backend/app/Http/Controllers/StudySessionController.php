@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreStudySessionRequest;
+use App\Http\Requests\UpdateStudySessionRequest;
+use App\Http\Resources\StudySessionResource;
 use App\Models\StudySession;
 use App\Models\StudyGroup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class StudySessionController extends Controller
 {
@@ -42,51 +44,17 @@ class StudySessionController extends Controller
 
         return response()->json([
             'message' => 'Daftar sesi berhasil diambil.',
-            'data' => $sessions,
+            'data' => StudySessionResource::collection($sessions)
+                ->resolve($request),
         ]);
     }
 
     /**
      * Membuat sesi belajar baru.
      */
-    public function store(Request $request)
+    public function store(StoreStudySessionRequest $request)
     {
-        $validated = $request->validate([
-            'study_group_id' => [
-                'required',
-                'exists:study_groups,id',
-            ],
-            'title' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-            'description' => [
-                'nullable',
-                'string',
-            ],
-            'meeting_link' => [
-                'nullable',
-                'url',
-                'max:1000',
-            ],
-            'max_participants' => [
-                'required',
-                'integer',
-                'min:2',
-                'max:100',
-            ],
-            'scheduled_at' => [
-                'required',
-                'date',
-            ],
-            'duration_minutes' => [
-                'required',
-                'integer',
-                'min:15',
-                'max:480',
-            ],
-        ]);
+        $validated = $request->validated();
 
         $user = $request->user();
 
@@ -139,14 +107,23 @@ class StudySessionController extends Controller
 
             DB::commit();
 
+            $session->load([
+                'host:id,name',
+                'subject:id,name',
+                'studyGroup:id,name,slug',
+                'participants.user:id,name',
+            ]);
+
+            $session->loadCount([
+                'participants as participants_count' => function ($query) {
+                    $query->where('status', 'accepted');
+                }
+            ]);
+
             return response()->json([
                 'message' => 'Sesi belajar berhasil dibuat.',
-                'data' => $session->load([
-                    'host:id,name',
-                    'subject:id,name',
-                    'studyGroup:id,name,slug',
-                    'participants.user:id,name',
-                ]),
+                'data' => (new StudySessionResource($session))
+                    ->resolve($request),
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -164,6 +141,11 @@ class StudySessionController extends Controller
     public function show(Request $request, StudySession $studySession)
     {
         $user = $request->user();
+
+        // Load relasi terlebih dahulu agar tidak terjadi lazy loading.
+        $studySession->load([
+            'studyGroup.members',
+        ]);
 
         $isMember = $studySession->studyGroup
             ->members()
@@ -192,7 +174,8 @@ class StudySessionController extends Controller
 
         return response()->json([
             'message' => 'Detail sesi berhasil diambil.',
-            'data' => $studySession,
+            'data' => (new StudySessionResource($studySession))
+                ->resolve($request),
         ]);
     }
 
@@ -200,7 +183,7 @@ class StudySessionController extends Controller
      * Mengubah sesi.
      */
     public function update(
-        Request $request,
+        UpdateStudySessionRequest $request,
         StudySession $studySession
     ) {
         $user = $request->user();
@@ -217,42 +200,7 @@ class StudySessionController extends Controller
             ], 422);
         }
 
-        $validated = $request->validate([
-            'title' => [
-                'sometimes',
-                'required',
-                'string',
-                'max:255',
-            ],
-            'description' => [
-                'nullable',
-                'string',
-            ],
-            'meeting_link' => [
-                'nullable',
-                'url',
-                'max:1000',
-            ],
-            'max_participants' => [
-                'sometimes',
-                'required',
-                'integer',
-                'min:2',
-                'max:100',
-            ],
-            'scheduled_at' => [
-                'sometimes',
-                'required',
-                'date',
-            ],
-            'duration_minutes' => [
-                'sometimes',
-                'required',
-                'integer',
-                'min:15',
-                'max:480',
-            ],
-        ]);
+        $validated = $request->validated();
 
         if (
             isset($validated['max_participants']) &&
@@ -268,13 +216,24 @@ class StudySessionController extends Controller
 
         $studySession->update($validated);
 
+        $studySession->fresh();
+
+        $studySession->load([
+            'host:id,name',
+            'subject:id,name',
+            'studyGroup:id,name,slug',
+        ]);
+
+        $studySession->loadCount([
+            'participants as participants_count' => function ($query) {
+                $query->where('status', 'accepted');
+            }
+        ]);
+
         return response()->json([
             'message' => 'Sesi berhasil diperbarui.',
-            'data' => $studySession->fresh()->load([
-                'host:id,name',
-                'subject:id,name',
-                'studyGroup:id,name,slug',
-            ]),
+            'data' => (new StudySessionResource($studySession))
+                ->resolve($request),
         ]);
     }
 

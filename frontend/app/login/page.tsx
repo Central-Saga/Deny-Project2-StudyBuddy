@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || '/api'
+  process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 ).replace(/\/$/, '');
 
 export default function LoginPage() {

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreGroupRequest;
+use App\Http\Resources\StudyGroupResource;
 use App\Models\StudyGroup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +14,7 @@ class GroupController extends Controller
     /**
      * Menampilkan semua study group aktif.
      */
-    public function index()
+    public function index(Request $request)
     {
         $groups = StudyGroup::with([
             'creator:id,name',
@@ -22,21 +24,17 @@ class GroupController extends Controller
         ->latest()
         ->get();
 
-        return response()->json($groups);
+        return response()->json(
+            StudyGroupResource::collection($groups)->resolve($request)
+        );
     }
 
     /**
      * Membuat study group baru.
      */
-    public function store(Request $request)
+    public function store(StoreGroupRequest $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'subject_id' => 'required|exists:subjects,id',
-            'description' => 'nullable|string',
-            'max_members' => 'required|integer|min:2|max:100',
-            'is_private' => 'boolean',
-        ]);
+        $validated = $request->validated();
 
         $user = $request->user();
 
@@ -77,12 +75,14 @@ class GroupController extends Controller
 
             DB::commit();
 
+            $group->load([
+                'creator:id,name',
+                'subject:id,name',
+                'members.user:id,name',
+            ]);
+
             return response()->json(
-                $group->load([
-                    'creator:id,name',
-                    'subject:id,name',
-                    'members.user:id,name',
-                ]),
+                (new StudyGroupResource($group))->resolve($request),
                 201
             );
         } catch (\Throwable $e) {
