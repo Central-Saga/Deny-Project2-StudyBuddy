@@ -49,7 +49,7 @@ class StudyBuddyApiTest extends TestCase
 
     public function test_user_can_register(): void
     {
-        $response = $this->postJson('/api/register', [
+        $response = $this->postJson('/api/v1/register', [
             'name' => 'Test Register User',
             'email' => 'register@example.com',
             'password' => 'password123',
@@ -78,7 +78,7 @@ class StudyBuddyApiTest extends TestCase
             'password' => 'password123',
         ]);
 
-        $response = $this->postJson('/api/login', [
+        $response = $this->postJson('/api/v1/login', [
             'email' => $user->email,
             'password' => 'password123',
         ]);
@@ -98,7 +98,7 @@ class StudyBuddyApiTest extends TestCase
         $user = User::factory()->create();
         $subject = $this->createSubject();
 
-        $response = $this->actingAs($user, 'sanctum')->postJson('/api/groups', [
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/groups', [
             'name' => 'Group Test API',
             'subject_id' => $subject->id,
             'description' => 'Group untuk pengujian API.',
@@ -141,7 +141,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($member, 'sanctum')
-            ->postJson("/api/groups/{$group->id}/toggle-join");
+            ->postJson("/api/v1/groups/{$group->id}/toggle-join");
 
         $response
             ->assertOk()
@@ -164,7 +164,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($user, 'sanctum')
-            ->postJson("/api/groups/{$group->id}/toggle-join");
+            ->postJson("/api/v1/groups/{$group->id}/toggle-join");
 
         $response
             ->assertUnprocessable()
@@ -182,7 +182,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($user, 'sanctum')
-            ->postJson('/api/study-sessions', [
+            ->postJson('/api/v1/study-sessions', [
                 'study_group_id' => $group->id,
                 'title' => 'Test Study Session',
                 'description' => 'Session automated test.',
@@ -225,7 +225,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($outsider, 'sanctum')
-            ->postJson('/api/study-sessions', [
+            ->postJson('/api/v1/study-sessions', [
                 'study_group_id' => $group->id,
                 'title' => 'Unauthorized Session',
                 'description' => 'Should be rejected.',
@@ -261,7 +261,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($user, 'sanctum')
-            ->post('/api/materials', [
+            ->post('/api/v1/materials', [
                 'title' => 'Materi Automated Test',
                 'description' => 'Materi untuk testing upload.',
                 'subject' => 'Basis Data',
@@ -306,7 +306,7 @@ class StudyBuddyApiTest extends TestCase
 
         $response = $this
             ->actingAs($user, 'sanctum')
-            ->postJson('/api/materials', [
+            ->postJson('/api/v1/materials', [
                 'title' => 'Materi Tanpa File',
                 'description' => 'Test validation.',
                 'subject' => 'Basis Data',

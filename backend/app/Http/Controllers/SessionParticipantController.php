@@ -15,6 +15,9 @@ class SessionParticipantController extends Controller
     {
         $user = $request->user();
 
+        // Load relasi yang digunakan agar tidak terjadi lazy loading.
+        $studySession->load('studyGroup');
+
         if ($studySession->status !== 'scheduled') {
             return response()->json([
                 'message' => 'Sesi sudah tidak dapat diikuti.',

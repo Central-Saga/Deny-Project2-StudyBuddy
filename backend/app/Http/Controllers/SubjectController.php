@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\SubjectResource;
 use App\Models\Subject;
 
 class SubjectController extends Controller
@@ -13,6 +14,8 @@ class SubjectController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json($subjects);
+        return response()->json(
+            SubjectResource::collection($subjects)
+        );
     }
 }
