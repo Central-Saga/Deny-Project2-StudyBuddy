@@ -9,6 +9,9 @@ use App\Http\Controllers\GroupController;
 use App\Http\Controllers\MaterialController;
 use App\Http\Controllers\StudySessionController;
 use App\Http\Controllers\SessionParticipantController;
+use App\Http\Controllers\QuizController;
+use App\Http\Controllers\TutoringController;
+use App\Http\Controllers\NotificationController;
 
 Route::prefix('v1')->group(function () {
 
@@ -22,6 +25,7 @@ Route::prefix('v1')->group(function () {
     // Protected Routes
     Route::middleware('auth:sanctum')->group(function () {
 
+        // Subjects
         Route::get('/subjects', [SubjectController::class, 'index']);
 
         // Authentication
@@ -57,7 +61,10 @@ Route::prefix('v1')->group(function () {
 
         // Buddy
         Route::get('/buddies', [BuddyController::class, 'index']);
-        Route::post('/buddies/{id}/connect', [BuddyController::class, 'connect']);
+        Route::post(
+            '/buddies/{id}/connect',
+            [BuddyController::class, 'connect']
+        );
 
         // Groups
         Route::get('/groups', [GroupController::class, 'index']);
@@ -65,6 +72,59 @@ Route::prefix('v1')->group(function () {
         Route::post(
             '/groups/{id}/toggle-join',
             [GroupController::class, 'joinToggle']
+        );
+
+        // Quiz
+        Route::get('/quizzes', [QuizController::class, 'index']);
+        Route::post('/quizzes', [QuizController::class, 'store']);
+        Route::get('/quizzes/{quiz}', [QuizController::class, 'show']);
+        Route::post(
+            '/quizzes/{quiz}/attempts',
+            [QuizController::class, 'start']
+        );
+        Route::post(
+            '/quizzes/{quiz}/attempts/{attempt}/submit',
+            [QuizController::class, 'submit']
+        );
+
+        // Peer Tutoring
+        Route::get(
+            '/tutoring/tutors',
+            [TutoringController::class, 'tutors']
+        );
+        Route::get(
+            '/tutoring/profile/me',
+            [TutoringController::class, 'myProfile']
+        );
+        Route::post(
+            '/tutoring/profile',
+            [TutoringController::class, 'saveProfile']
+        );
+        Route::get(
+            '/tutoring/requests',
+            [TutoringController::class, 'requests']
+        );
+        Route::post(
+            '/tutoring/requests',
+            [TutoringController::class, 'createRequest']
+        );
+        Route::patch(
+            '/tutoring/requests/{id}/status',
+            [TutoringController::class, 'updateStatus']
+        );
+
+        // Notifications
+        Route::get(
+            '/notifications',
+            [NotificationController::class, 'index']
+        );
+        Route::patch(
+            '/notifications/{id}/read',
+            [NotificationController::class, 'markRead']
+        );
+        Route::post(
+            '/notifications/read-all',
+            [NotificationController::class, 'markAllRead']
         );
     });
 });

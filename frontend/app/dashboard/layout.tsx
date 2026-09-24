@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { parseUserDto, type UserDto } from "@/types/api";
 import {
   GraduationCap,
   Home,
@@ -24,7 +25,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserDto | null>(null);
 
   // Cek token & ambil data user dari localStorage
   useEffect(() => {
@@ -36,13 +37,17 @@ export default function DashboardLayout({
       return;
     }
 
-    if (savedUser) {
-      try {
-        setUserData(JSON.parse(savedUser));
-      } catch (e) {
-        console.error('Gagal membaca data user dari localStorage', e);
-      }
+  if (savedUser) {
+   try {
+     const parsedUser = parseUserDto(savedUser);
+
+     if (parsedUser) {
+      setUserData(parsedUser);
+     }
+   } catch (e) {
+     console.error('Gagal membaca data user dari localStorage', e);
     }
+  }
   }, [router]);
 
   // Fungsi Logout

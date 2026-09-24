@@ -54,8 +54,12 @@ export default function RegisterPage() {
 
       // Redirect ke Dashboard
       router.push("/dashboard");
-    } catch (err: any) {
-      setErrorMessage(err.message || "Terjadi kesalahan pada server.");
+    } catch (err: unknown) {
+  setErrorMessage(
+    err instanceof Error
+      ? err.message
+      : "Terjadi kesalahan pada server."
+  );
     } finally {
       setLoading(false);
     }
