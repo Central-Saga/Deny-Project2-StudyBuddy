@@ -64,9 +64,11 @@ export default function LoginPage() {
 
       // Redirect ke Dashboard setelah berhasil
       router.push("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrorMessage(
-        err.message || "Terjadi kesalahan saat masuk."
+        err instanceof Error
+          ? err.message
+          : "Terjadi kesalahan saat masuk."
       );
     } finally {
       setLoading(false);

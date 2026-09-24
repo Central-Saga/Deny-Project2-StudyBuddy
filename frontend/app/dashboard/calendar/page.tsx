@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+
 import {
   BookOpen,
   CalendarDays,
@@ -16,6 +17,7 @@ import {
   UsersRound,
   Video,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 
 interface Subject {
@@ -80,9 +82,20 @@ function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
 }
 
-function getPayload<T>(payload: any): T[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
+function getPayload<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'data' in payload &&
+    Array.isArray(payload.data)
+  ) {
+    return payload.data as T[];
+  }
+
   return [];
 }
 
@@ -314,9 +327,8 @@ export default function CalendarPage() {
         ['Sesi Bulan Ini', monthSessionCount, `Pada ${formatMonthLabel(cursorDate)}`, BookOpen, 'bg-indigo-50 text-indigo-600'],
         ['Grup Saya', groups.length, 'Grup tersedia untuk sesi', UsersRound, 'bg-emerald-50 text-emerald-600'],
         ['Total Kehadiran', participantTotal, 'Total peserta dari sesi yang diambil', Sparkles, 'bg-amber-50 text-amber-600'],
-      ] as const).map(([label, value, note, Icon, iconClass]) => {
-          const CardIcon = Icon as any;
-          return <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-900">{value}</p></div><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}><CardIcon className="h-5 w-5" /></div></div><p className="mt-3 text-[11px] text-slate-400">{note}</p></div>;
+     ] as Array<[string, number, string, LucideIcon, string]>).map(([label, value, note, Icon, iconClass]) => {
+          return <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-900">{value}</p></div><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}><Icon className="h-5 w-5" /></div></div><p className="mt-3 text-[11px] text-slate-400">{note}</p></div>;
         })}
       </section>
 

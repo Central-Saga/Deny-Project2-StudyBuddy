@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { parseUserDto, type UserDto } from "@/types/api";
 import {
   BookOpen,
   Calendar,
@@ -12,7 +13,7 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,9 +26,13 @@ export default function DashboardPage() {
       return;
     }
 
-    if (savedUser) {
-      setUserData(JSON.parse(savedUser));
+  if (savedUser) {
+    const parsedUser = parseUserDto(savedUser);
+
+    if (parsedUser) {
+    setUserData(parsedUser);
     }
+  }
     setLoading(false);
   }, [router]);
 
