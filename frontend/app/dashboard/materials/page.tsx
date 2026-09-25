@@ -12,10 +12,11 @@ import {
   FileText,
   Image as ImageIcon,
   Loader2,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   Upload,
-  User,
   X,
 } from 'lucide-react';
 
@@ -27,6 +28,9 @@ interface MaterialUser {
   id: number;
   name: string;
   email?: string;
+  profile?: {
+    avatar_url?: string | null;
+  } | null;
 }
 
 interface Material {
@@ -39,15 +43,22 @@ interface Material {
   file_size: number;
   created_at: string;
   updated_at: string;
+  is_owner: boolean;
   user?: MaterialUser;
 }
 
 interface MaterialsResponse {
   data: Material[];
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
+  meta?: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  current_page?: number;
+  last_page?: number;
+  per_page?: number;
+  total?: number;
 }
 
 export default function MaterialsPage() {
@@ -57,8 +68,11 @@ export default function MaterialsPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+  const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -215,9 +229,12 @@ export default function MaterialsPage() {
         const result: MaterialsResponse = await response.json();
 
         setMaterials(Array.isArray(result.data) ? result.data : []);
-        setCurrentPage(result.current_page || 1);
-        setLastPage(result.last_page || 1);
-        setTotalMaterials(result.total || 0);
+
+        const pagination = result.meta ?? result;
+
+        setCurrentPage(pagination.current_page || 1);
+        setLastPage(pagination.last_page || 1);
+        setTotalMaterials(pagination.total || 0);
       } catch (err) {
         console.error('Gagal mengambil materi:', err);
 
@@ -240,6 +257,42 @@ export default function MaterialsPage() {
 
     return () => clearTimeout(timer);
   }, [fetchMaterials]);
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      subject: '',
+      description: '',
+      file: null,
+    });
+  };
+
+  const openCreateModal = () => {
+    setEditingMaterial(null);
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (material: Material) => {
+    if (!material.is_owner) return;
+
+    setEditingMaterial(material);
+    setFormData({
+      title: material.title,
+      subject: material.subject,
+      description: material.description || '',
+      file: null,
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeMaterialModal = () => {
+    if (uploading) return;
+
+    setIsModalOpen(false);
+    setEditingMaterial(null);
+    resetForm();
+  };
 
   const handleInputChange = (
     event: React.ChangeEvent<
@@ -291,7 +344,7 @@ export default function MaterialsPage() {
       return;
     }
 
-    if (!formData.file) {
+    if (!editingMaterial && !formData.file) {
       alert('Silakan pilih file materi terlebih dahulu.');
       return;
     }
@@ -315,9 +368,21 @@ export default function MaterialsPage() {
         'description',
         formData.description.trim()
       );
-      uploadData.append('file', formData.file);
+      if (formData.file) {
+        uploadData.append('file', formData.file);
+      }
 
-      const response = await fetch(`${API_URL}/materials`, {
+      const requestUrl = editingMaterial
+        ? `${API_URL}/materials/${editingMaterial.id}`
+        : `${API_URL}/materials`;
+
+      if (editingMaterial) {
+        // Laravel method spoofing menjaga upload file tetap kompatibel
+        // saat endpoint update menggunakan PATCH.
+        uploadData.append('_method', 'PATCH');
+      }
+
+      const response = await fetch(requestUrl, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -351,18 +416,17 @@ export default function MaterialsPage() {
         );
       }
 
-      setFormData({
-        title: '',
-        subject: '',
-        description: '',
-        file: null,
-      });
+      const successMessage = editingMaterial
+        ? 'Materi berhasil diperbarui.'
+        : 'Materi berhasil diunggah.';
 
+      resetForm();
+      setEditingMaterial(null);
       setIsModalOpen(false);
 
-      showSuccess('Materi berhasil diunggah.');
+      showSuccess(successMessage);
 
-      await fetchMaterials(1);
+      await fetchMaterials(editingMaterial ? currentPage : 1);
     } catch (err) {
       console.error('Gagal upload materi:', err);
 
@@ -453,6 +517,70 @@ export default function MaterialsPage() {
     }
   };
 
+  const handleDelete = async (material: Material) => {
+    if (!material.is_owner) return;
+
+    const token = getToken();
+
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
+    setDeletingId(material.id);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/materials/${material.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        router.push('/login');
+        return;
+      }
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Gagal menghapus materi.'
+        );
+      }
+
+      showSuccess(
+        result.message || 'Materi berhasil dihapus.'
+      );
+
+      setMaterialToDelete(null);
+
+      const targetPage =
+        materials.length === 1 && currentPage > 1
+          ? currentPage - 1
+          : currentPage;
+
+      await fetchMaterials(targetPage);
+    } catch (err) {
+      console.error('Gagal menghapus materi:', err);
+
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Gagal menghapus materi.'
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handlePageChange = (page: number) => {
     if (
       page < 1 ||
@@ -503,7 +631,7 @@ export default function MaterialsPage() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setIsModalOpen(true)}
+              onClick={openCreateModal}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
@@ -725,7 +853,7 @@ export default function MaterialsPage() {
 
             <button
               type="button"
-              onClick={() => setIsModalOpen(true)}
+              onClick={openCreateModal}
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
@@ -754,6 +882,12 @@ export default function MaterialsPage() {
                       >
                         {getFileTypeLabel(material.file_type)}
                       </span>
+
+                      {material.is_owner && (
+                        <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+                          Materi Anda
+                        </span>
+                      )}
                     </div>
 
                     <span className="shrink-0 text-[10px] font-medium text-slate-400">
@@ -795,8 +929,23 @@ export default function MaterialsPage() {
                   {/* Footer */}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100">
-                        <User className="h-4 w-4 text-slate-500" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[11px] font-bold text-white">
+                        {material.user?.profile?.avatar_url ? (
+                          <img
+                            src={material.user.profile.avatar_url}
+                            alt={`Foto profil ${material.user.name}`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          (material.user?.name || 'Mahasiswa')
+                            .trim()
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((word) => word.charAt(0))
+                            .join('')
+                            .toUpperCase()
+                        )}
                       </div>
 
                       <div className="min-w-0">
@@ -810,26 +959,65 @@ export default function MaterialsPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(material)}
-                      disabled={
-                        downloadingId === material.id
-                      }
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {downloadingId === material.id ? (
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {material.is_owner && (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Mengunduh...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="h-4 w-4" />
-                          Unduh Materi
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(material)}
+                            disabled={
+                              deletingId === material.id ||
+                              downloadingId === material.id
+                            }
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMaterialToDelete(material)}
+                            disabled={
+                              deletingId === material.id ||
+                              downloadingId === material.id
+                            }
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingId === material.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                            {deletingId === material.id
+                              ? 'Menghapus...'
+                              : 'Hapus'}
+                          </button>
                         </>
                       )}
-                    </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(material)}
+                        disabled={
+                          downloadingId === material.id ||
+                          deletingId === material.id
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {downloadingId === material.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Mengunduh...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4" />
+                            Unduh Materi
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}
@@ -878,7 +1066,73 @@ export default function MaterialsPage() {
         )}
       </section>
 
-      {/* ================= UPLOAD MODAL ================= */}
+      {/* ================= DELETE CONFIRMATION MODAL ================= */}
+      {materialToDelete && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              deletingId === null
+            ) {
+              setMaterialToDelete(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-bold text-slate-900">
+                  Hapus materi?
+                </h2>
+
+                <p className="mt-1.5 text-sm leading-6 text-slate-500">
+                  Materi{' '}
+                  <span className="font-semibold text-slate-700">
+                    {materialToDelete.title}
+                  </span>{' '}
+                  beserta file-nya akan dihapus dari server.
+                  Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => setMaterialToDelete(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => handleDelete(materialToDelete)}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingId === materialToDelete.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+
+                {deletingId === materialToDelete.id
+                  ? 'Menghapus...'
+                  : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= CREATE / EDIT MODAL ================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white shadow-2xl">
@@ -890,15 +1144,13 @@ export default function MaterialsPage() {
                 </p>
 
                 <h3 className="mt-1 text-lg font-bold text-slate-900">
-                  Unggah Materi
+                  {editingMaterial ? 'Edit Materi' : 'Unggah Materi'}
                 </h3>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  !uploading && setIsModalOpen(false)
-                }
+                onClick={closeMaterialModal}
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
               >
                 <X className="h-5 w-5" />
@@ -969,16 +1221,20 @@ export default function MaterialsPage() {
               {/* File */}
               <div>
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                  File Materi
-                  <span className="ml-1 text-red-500">
-                    *
-                  </span>
+                  {editingMaterial
+                    ? 'Ganti File Materi'
+                    : 'File Materi'}
+                  {!editingMaterial && (
+                    <span className="ml-1 text-red-500">
+                      *
+                    </span>
+                  )}
                 </label>
 
                 <div className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 text-center transition hover:border-blue-300 hover:bg-blue-50/30">
                   <input
                     type="file"
-                    required
+                    required={!editingMaterial}
                     disabled={uploading}
                     onChange={handleFileChange}
                     accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.rar,.jpg,.jpeg,.png"
@@ -992,7 +1248,9 @@ export default function MaterialsPage() {
                   <p className="mt-3 text-xs font-semibold text-slate-700">
                     {formData.file
                       ? formData.file.name
-                      : 'Klik untuk memilih file'}
+                      : editingMaterial
+                        ? 'Opsional: pilih file baru untuk mengganti file lama'
+                        : 'Klik untuk memilih file'}
                   </p>
 
                   <p className="mt-1 text-[10px] text-slate-400">
@@ -1011,7 +1269,7 @@ export default function MaterialsPage() {
                 <button
                   type="button"
                   disabled={uploading}
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeMaterialModal}
                   className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   Batal
@@ -1027,8 +1285,12 @@ export default function MaterialsPage() {
                   )}
 
                   {uploading
-                    ? 'Mengunggah...'
-                    : 'Simpan & Unggah'}
+                    ? editingMaterial
+                      ? 'Menyimpan...'
+                      : 'Mengunggah...'
+                    : editingMaterial
+                      ? 'Simpan Perubahan'
+                      : 'Simpan & Unggah'}
                 </button>
               </div>
             </form>
