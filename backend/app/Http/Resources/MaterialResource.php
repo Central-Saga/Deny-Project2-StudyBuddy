@@ -12,6 +12,8 @@ class MaterialResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $currentUserId = $request->user()?->id;
+
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
@@ -21,6 +23,8 @@ class MaterialResource extends JsonResource
             'file_path' => $this->file_path,
             'file_type' => $this->file_type,
             'file_size' => $this->file_size,
+            'is_owner' => $currentUserId !== null
+                && (int) $this->user_id === (int) $currentUserId,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
 

@@ -625,6 +625,273 @@ class StudyBuddyApiTest extends TestCase
         ]);
     }
 
+    public function test_material_owner_can_update_without_replacing_file(): void
+    {
+        Storage::fake('public');
+
+        $owner = User::factory()->create();
+
+        $file = UploadedFile::fake()->create(
+            'materi-lama.pdf',
+            100,
+            'application/pdf'
+        );
+
+        $path = $file->store('materials', 'public');
+
+        $material = Material::create([
+            'user_id' => $owner->id,
+            'title' => 'Judul Lama',
+            'description' => 'Deskripsi lama.',
+            'subject' => 'Basis Data',
+            'file_path' => $path,
+            'file_type' => 'pdf',
+            'file_size' => $file->getSize(),
+        ]);
+
+        $response = $this
+            ->actingAs($owner, 'sanctum')
+            ->patchJson(
+                "/api/v1/materials/{$material->id}",
+                [
+                    'title' => 'Judul Baru',
+                    'description' => 'Deskripsi baru.',
+                    'subject' => 'Pemrograman Web',
+                ]
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Materi berhasil diperbarui.'
+            )
+            ->assertJsonPath(
+                'material.title',
+                'Judul Baru'
+            )
+            ->assertJsonPath(
+                'material.subject',
+                'Pemrograman Web'
+            );
+
+        $this->assertDatabaseHas('materials', [
+            'id' => $material->id,
+            'user_id' => $owner->id,
+            'title' => 'Judul Baru',
+            'description' => 'Deskripsi baru.',
+            'subject' => 'Pemrograman Web',
+            'file_path' => $path,
+            'file_type' => 'pdf',
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_material_owner_can_replace_file(): void
+    {
+        Storage::fake('public');
+
+        $owner = User::factory()->create();
+
+        $oldFile = UploadedFile::fake()->create(
+            'materi-lama.pdf',
+            100,
+            'application/pdf'
+        );
+
+        $oldPath = $oldFile->store('materials', 'public');
+
+        $material = Material::create([
+            'user_id' => $owner->id,
+            'title' => 'Materi Ganti File',
+            'description' => 'Materi sebelum file diganti.',
+            'subject' => 'Basis Data',
+            'file_path' => $oldPath,
+            'file_type' => 'pdf',
+            'file_size' => $oldFile->getSize(),
+        ]);
+
+        $newFile = UploadedFile::fake()->create(
+            'materi-baru.pptx',
+            120,
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        );
+
+        /*
+         * Frontend menggunakan POST + _method=PATCH agar multipart
+         * upload tetap kompatibel dengan Laravel.
+         */
+        $response = $this
+            ->actingAs($owner, 'sanctum')
+            ->post(
+                "/api/v1/materials/{$material->id}",
+                [
+                    '_method' => 'PATCH',
+                    'file' => $newFile,
+                ]
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Materi berhasil diperbarui.'
+            )
+            ->assertJsonPath(
+                'material.file_type',
+                'pptx'
+            );
+
+        $material->refresh();
+
+        $this->assertNotSame(
+            $oldPath,
+            $material->file_path
+        );
+
+        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('public')->assertExists(
+            $material->file_path
+        );
+
+        $this->assertDatabaseHas('materials', [
+            'id' => $material->id,
+            'file_path' => $material->file_path,
+            'file_type' => 'pptx',
+        ]);
+    }
+
+    public function test_non_owner_cannot_update_material(): void
+    {
+        $owner = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        $material = Material::create([
+            'user_id' => $owner->id,
+            'title' => 'Materi Milik Owner',
+            'description' => 'Tidak boleh diedit user lain.',
+            'subject' => 'Basis Data',
+            'file_path' => 'materials/owner-material.pdf',
+            'file_type' => 'pdf',
+            'file_size' => 1024,
+        ]);
+
+        $response = $this
+            ->actingAs($otherUser, 'sanctum')
+            ->patchJson(
+                "/api/v1/materials/{$material->id}",
+                [
+                    'title' => 'Percobaan Edit',
+                ]
+            );
+
+        $response
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'Anda tidak memiliki akses untuk mengubah materi ini'
+            );
+
+        $this->assertDatabaseHas('materials', [
+            'id' => $material->id,
+            'user_id' => $owner->id,
+            'title' => 'Materi Milik Owner',
+        ]);
+    }
+
+    public function test_material_owner_can_delete_material_and_file(): void
+    {
+        Storage::fake('public');
+
+        $owner = User::factory()->create();
+
+        $file = UploadedFile::fake()->create(
+            'materi-hapus.pdf',
+            100,
+            'application/pdf'
+        );
+
+        $path = $file->store('materials', 'public');
+
+        $material = Material::create([
+            'user_id' => $owner->id,
+            'title' => 'Materi Akan Dihapus',
+            'description' => 'Materi untuk delete test.',
+            'subject' => 'Basis Data',
+            'file_path' => $path,
+            'file_type' => 'pdf',
+            'file_size' => $file->getSize(),
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+
+        $response = $this
+            ->actingAs($owner, 'sanctum')
+            ->deleteJson(
+                "/api/v1/materials/{$material->id}"
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Materi berhasil dihapus'
+            );
+
+        $this->assertDatabaseMissing('materials', [
+            'id' => $material->id,
+        ]);
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_non_owner_cannot_delete_material(): void
+    {
+        Storage::fake('public');
+
+        $owner = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        $file = UploadedFile::fake()->create(
+            'owner-material.pdf',
+            100,
+            'application/pdf'
+        );
+
+        $path = $file->store('materials', 'public');
+
+        $material = Material::create([
+            'user_id' => $owner->id,
+            'title' => 'Materi Owner',
+            'description' => 'Tidak boleh dihapus user lain.',
+            'subject' => 'Basis Data',
+            'file_path' => $path,
+            'file_type' => 'pdf',
+            'file_size' => $file->getSize(),
+        ]);
+
+        $response = $this
+            ->actingAs($otherUser, 'sanctum')
+            ->deleteJson(
+                "/api/v1/materials/{$material->id}"
+            );
+
+        $response
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'Anda tidak memiliki akses untuk menghapus materi ini'
+            );
+
+        $this->assertDatabaseHas('materials', [
+            'id' => $material->id,
+            'user_id' => $owner->id,
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+    }
+
     public function test_authenticated_user_can_report_material(): void
     {
         $owner = User::factory()->create();
