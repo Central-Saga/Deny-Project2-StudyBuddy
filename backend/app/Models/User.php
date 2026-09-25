@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Availability;
+use App\Models\Profile;
+use App\Models\StudyGroup;
+use App\Models\StudySession;
+use App\Models\UserSubject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Models\Profile;
-use App\Models\UserSubject;
-use App\Models\StudyGroup;
-use App\Models\StudySession;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -23,7 +24,9 @@ class User extends Authenticatable
         'password',
         'course',
         'skills',
+        'learning_styles',
         'bio',
+        'last_active_at',
     ];
 
     protected $hidden = [
@@ -37,6 +40,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'skills' => 'array',
+            'learning_styles' => 'array',
+            'last_active_at' => 'datetime',
         ];
     }
 
@@ -52,15 +57,27 @@ class User extends Authenticatable
         return $this->hasMany(UserSubject::class);
     }
 
+    // Relasi ke Availability
+    public function availabilities(): HasMany
+    {
+        return $this->hasMany(Availability::class);
+    }
+
     // Grup Belajar yang Dibuat
     public function createdGroups(): HasMany
     {
-        return $this->hasMany(StudyGroup::class, 'creator_id');
+        return $this->hasMany(
+            StudyGroup::class,
+            'creator_id'
+        );
     }
 
     // Sesi Belajar yang Dibuat/Dihost
     public function hostedSessions(): HasMany
     {
-        return $this->hasMany(StudySession::class, 'host_id');
+        return $this->hasMany(
+            StudySession::class,
+            'host_id'
+        );
     }
 }

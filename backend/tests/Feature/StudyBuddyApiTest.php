@@ -12,6 +12,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
+use App\Models\BuddyConnection;
+use App\Models\Availability;
+use App\Models\UserSubject;
 
 class StudyBuddyApiTest extends TestCase
 {
@@ -1141,4 +1144,965 @@ class StudyBuddyApiTest extends TestCase
 
         $this->assertDatabaseCount('tutoring_reviews', 1);
     }
+    public function test_buddy_directory_requires_authentication(): void
+{
+    $this->getJson('/api/v1/buddies')
+        ->assertUnauthorized();
+
+    $this->getJson('/api/v1/buddy-connections')
+        ->assertUnauthorized();
+}
+
+public function test_buddy_directory_excludes_current_user_and_can_search(): void
+{
+    $currentUser = User::factory()->create([
+        'name' => 'Current User',
+        'course' => 'Informatika',
+    ]);
+
+    $matchedBuddy = User::factory()->create([
+        'name' => 'Made Database',
+        'course' => 'Basis Data',
+        'skills' => ['Diskusi'],
+    ]);
+
+    $otherBuddy = User::factory()->create([
+        'name' => 'Komang Mobile',
+        'course' => 'Mobile Programming',
+        'skills' => ['Visual'],
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson('/api/v1/buddies?search=database');
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $matchedBuddy->id)
+        ->assertJsonPath('data.0.name', 'Made Database');
+
+    $ids = collect($response->json('data'))
+        ->pluck('id')
+        ->all();
+
+    $this->assertNotContains(
+        $currentUser->id,
+        $ids
+    );
+
+    $this->assertNotContains(
+        $otherBuddy->id,
+        $ids
+    );
+}
+
+public function test_buddy_detail_returns_profile_related_groups_and_connection_state(): void
+{
+    $currentUser = User::factory()->create();
+
+    $buddy = User::factory()->create([
+        'name' => 'Buddy Detail',
+        'course' => 'Pemrograman Web',
+        'skills' => ['Diskusi'],
+    ]);
+
+    $buddy->profile()->create([
+        'bio' => 'Belajar Laravel dan React.',
+        'university' => 'INSTIKI',
+        'major' => 'Informatika',
+    ]);
+
+    $group = $this->createGroup($buddy);
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $currentUser->id,
+        'receiver_id' => $buddy->id,
+        'status' => 'accepted',
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson("/api/v1/buddies/{$buddy->id}");
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('data.id', $buddy->id)
+        ->assertJsonPath('data.name', 'Buddy Detail')
+        ->assertJsonPath(
+            'data.profile.university',
+            'INSTIKI'
+        )
+        ->assertJsonPath(
+            'data.is_connected',
+            true
+        )
+        ->assertJsonPath(
+            'data.connection_id',
+            $connection->id
+        )
+        ->assertJsonPath(
+            'data.connection_status',
+            'accepted'
+        )
+        ->assertJsonPath(
+            'data.connection_direction',
+            'outgoing'
+        )
+        ->assertJsonPath(
+            'data.related_groups.0.id',
+            $group->id
+        );
+}
+
+public function test_buddy_cannot_view_own_profile_as_buddy(): void
+{
+    $user = User::factory()->create();
+
+    $this
+        ->actingAs($user, 'sanctum')
+        ->getJson("/api/v1/buddies/{$user->id}")
+        ->assertUnprocessable()
+        ->assertJsonPath(
+            'message',
+            'Profil ini adalah profil Anda sendiri.'
+        );
+}
+
+public function test_buddy_can_send_connection_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $response = $this
+        ->actingAs($requester, 'sanctum')
+        ->postJson(
+            "/api/v1/buddies/{$receiver->id}/connect"
+        );
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath(
+            'message',
+            'Permintaan koneksi berhasil dikirim.'
+        )
+        ->assertJsonPath(
+            'data.requester_id',
+            $requester->id
+        )
+        ->assertJsonPath(
+            'data.receiver_id',
+            $receiver->id
+        )
+        ->assertJsonPath(
+            'data.status',
+            'pending'
+        )
+        ->assertJsonPath(
+            'data.direction',
+            'outgoing'
+        );
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'requester_id' => $requester->id,
+            'receiver_id' => $receiver->id,
+            'status' => 'pending',
+        ]
+    );
+}
+
+public function test_buddy_cannot_connect_to_self(): void
+{
+    $user = User::factory()->create();
+
+    $this
+        ->actingAs($user, 'sanctum')
+        ->postJson(
+            "/api/v1/buddies/{$user->id}/connect"
+        )
+        ->assertUnprocessable()
+        ->assertJsonPath(
+            'message',
+            'Tidak dapat melakukan connect ke diri sendiri.'
+        );
+
+    $this->assertDatabaseCount(
+        'buddy_connections',
+        0
+    );
+}
+
+public function test_buddy_duplicate_active_connection_is_rejected(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $response = $this
+        ->actingAs($requester, 'sanctum')
+        ->postJson(
+            "/api/v1/buddies/{$receiver->id}/connect"
+        );
+
+    $response
+        ->assertConflict()
+        ->assertJsonPath(
+            'status',
+            'pending'
+        )
+        ->assertJsonPath(
+            'connection_id',
+            $connection->id
+        );
+
+    $this->assertDatabaseCount(
+        'buddy_connections',
+        1
+    );
+}
+
+public function test_buddy_rejected_connection_can_be_requested_again(): void
+{
+    $firstUser = User::factory()->create();
+    $secondUser = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $secondUser->id,
+        'receiver_id' => $firstUser->id,
+        'status' => 'rejected',
+    ]);
+
+    $response = $this
+        ->actingAs($firstUser, 'sanctum')
+        ->postJson(
+            "/api/v1/buddies/{$secondUser->id}/connect"
+        );
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath(
+            'data.id',
+            $connection->id
+        )
+        ->assertJsonPath(
+            'data.requester_id',
+            $firstUser->id
+        )
+        ->assertJsonPath(
+            'data.receiver_id',
+            $secondUser->id
+        )
+        ->assertJsonPath(
+            'data.status',
+            'pending'
+        );
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+            'requester_id' => $firstUser->id,
+            'receiver_id' => $secondUser->id,
+            'status' => 'pending',
+        ]
+    );
+}
+
+public function test_buddy_receiver_can_accept_connection_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $response = $this
+        ->actingAs($receiver, 'sanctum')
+        ->patchJson(
+            "/api/v1/buddy-connections/{$connection->id}/accept"
+        );
+
+    $response
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'Permintaan buddy berhasil diterima.'
+        )
+        ->assertJsonPath(
+            'data.status',
+            'accepted'
+        )
+        ->assertJsonPath(
+            'data.direction',
+            'incoming'
+        );
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+            'status' => 'accepted',
+        ]
+    );
+}
+
+public function test_buddy_requester_cannot_accept_own_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $this
+        ->actingAs($requester, 'sanctum')
+        ->patchJson(
+            "/api/v1/buddy-connections/{$connection->id}/accept"
+        )
+        ->assertForbidden();
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+            'status' => 'pending',
+        ]
+    );
+}
+
+public function test_buddy_receiver_can_reject_connection_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $response = $this
+        ->actingAs($receiver, 'sanctum')
+        ->patchJson(
+            "/api/v1/buddy-connections/{$connection->id}/reject"
+        );
+
+    $response
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'Permintaan buddy berhasil ditolak.'
+        );
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+            'status' => 'rejected',
+        ]
+    );
+}
+
+public function test_buddy_requester_can_cancel_pending_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $this
+        ->actingAs($requester, 'sanctum')
+        ->deleteJson(
+            "/api/v1/buddy-connections/{$connection->id}"
+        )
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'Permintaan buddy berhasil dibatalkan.'
+        );
+
+    $this->assertDatabaseMissing(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+        ]
+    );
+}
+
+public function test_buddy_receiver_cannot_delete_pending_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+
+    $this
+        ->actingAs($receiver, 'sanctum')
+        ->deleteJson(
+            "/api/v1/buddy-connections/{$connection->id}"
+        )
+        ->assertForbidden();
+
+    $this->assertDatabaseHas(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+            'status' => 'pending',
+        ]
+    );
+}
+
+public function test_buddy_accepted_connection_can_be_disconnected(): void
+{
+    $firstUser = User::factory()->create();
+    $secondUser = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $firstUser->id,
+        'receiver_id' => $secondUser->id,
+        'status' => 'accepted',
+    ]);
+
+    $this
+        ->actingAs($secondUser, 'sanctum')
+        ->deleteJson(
+            "/api/v1/buddy-connections/{$connection->id}"
+        )
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'Koneksi buddy berhasil diputus.'
+        );
+
+    $this->assertDatabaseMissing(
+        'buddy_connections',
+        [
+            'id' => $connection->id,
+        ]
+    );
+}
+
+public function test_buddy_connections_returns_incoming_and_outgoing_state(): void
+{
+    $currentUser = User::factory()->create();
+
+    $incomingUser = User::factory()->create([
+        'name' => 'Incoming Buddy',
+    ]);
+
+    $outgoingUser = User::factory()->create([
+        'name' => 'Outgoing Buddy',
+    ]);
+
+    BuddyConnection::create([
+        'requester_id' => $incomingUser->id,
+        'receiver_id' => $currentUser->id,
+        'status' => 'pending',
+    ]);
+
+    BuddyConnection::create([
+        'requester_id' => $currentUser->id,
+        'receiver_id' => $outgoingUser->id,
+        'status' => 'accepted',
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson('/api/v1/buddy-connections');
+
+    $response->assertOk();
+
+    $connections = collect(
+        $response->json('data')
+    );
+
+    $incoming = $connections->firstWhere(
+        'other_user.id',
+        $incomingUser->id
+    );
+
+    $outgoing = $connections->firstWhere(
+        'other_user.id',
+        $outgoingUser->id
+    );
+
+    $this->assertNotNull($incoming);
+    $this->assertSame(
+        'incoming',
+        $incoming['direction']
+    );
+    $this->assertSame(
+        'pending',
+        $incoming['status']
+    );
+
+    $this->assertNotNull($outgoing);
+    $this->assertSame(
+        'outgoing',
+        $outgoing['direction']
+    );
+    $this->assertSame(
+        'accepted',
+        $outgoing['status']
+    );
+  }
+  public function test_buddy_search_scores_and_sorts_matches(): void
+{
+    $currentUser = User::factory()->create();
+
+    $database = $this->createSubject();
+    $web = $this->createSubject();
+
+    $bestBuddy = User::factory()->create([
+        'name' => 'Best Buddy',
+        'learning_styles' => ['Diskusi'],
+        'last_active_at' => now()->subHour(),
+    ]);
+
+    UserSubject::create([
+        'user_id' => $bestBuddy->id,
+        'subject_id' => $database->id,
+        'proficiency_level' => 'intermediate',
+        'type' => 'learning',
+    ]);
+
+    UserSubject::create([
+        'user_id' => $bestBuddy->id,
+        'subject_id' => $web->id,
+        'proficiency_level' => 'intermediate',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $bestBuddy->id,
+        'day_of_week' => 1,
+        'start_time' => '19:00',
+        'end_time' => '21:00',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    $secondBuddy = User::factory()->create([
+        'name' => 'Second Buddy',
+        'learning_styles' => ['Visual'],
+        'last_active_at' => now(),
+    ]);
+
+    UserSubject::create([
+        'user_id' => $secondBuddy->id,
+        'subject_id' => $database->id,
+        'proficiency_level' => 'beginner',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $secondBuddy->id,
+        'day_of_week' => 1,
+        'start_time' => '18:00',
+        'end_time' => '21:30',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    $notAvailableBuddy = User::factory()->create([
+        'name' => 'Not Available Buddy',
+        'learning_styles' => ['Diskusi'],
+    ]);
+
+    UserSubject::create([
+        'user_id' => $notAvailableBuddy->id,
+        'subject_id' => $database->id,
+        'proficiency_level' => 'advanced',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $notAvailableBuddy->id,
+        'day_of_week' => 1,
+        'start_time' => '08:00',
+        'end_time' => '10:00',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    $query = http_build_query([
+        'subject_ids' => [
+            $database->id,
+            $web->id,
+        ],
+        'day_of_week' => 1,
+        'start_time' => '20:00',
+        'end_time' => '22:00',
+        'learning_styles' => [
+            'Diskusi',
+        ],
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson("/api/v1/buddies?{$query}");
+
+    $response
+        ->assertOk()
+        ->assertJsonPath(
+            'data.0.id',
+            $bestBuddy->id
+        )
+        ->assertJsonPath(
+            'data.0.match_score',
+            4
+        )
+        ->assertJsonPath(
+            'data.0.availability_match',
+            true
+        )
+        ->assertJsonPath(
+            'data.0.learning_style_match',
+            true
+        )
+        ->assertJsonPath(
+            'data.1.id',
+            $secondBuddy->id
+        )
+        ->assertJsonPath(
+            'data.1.match_score',
+            2
+        )
+        ->assertJsonPath(
+            'data.1.learning_style_match',
+            false
+        );
+
+    $ids = collect(
+        $response->json('data')
+    )
+        ->pluck('id')
+        ->all();
+
+    $this->assertNotContains(
+        $notAvailableBuddy->id,
+        $ids
+    );
+  }
+   public function test_buddy_search_uses_last_active_as_score_tiebreaker(): void
+{
+    $currentUser = User::factory()->create();
+
+    $subject = $this->createSubject();
+
+    $olderBuddy = User::factory()->create([
+        'name' => 'Older Buddy',
+        'last_active_at' => now()->subDay(),
+    ]);
+
+    $newerBuddy = User::factory()->create([
+        'name' => 'Newer Buddy',
+        'last_active_at' => now(),
+    ]);
+
+    foreach ([$olderBuddy, $newerBuddy] as $buddy) {
+        UserSubject::create([
+            'user_id' => $buddy->id,
+            'subject_id' => $subject->id,
+            'proficiency_level' => 'beginner',
+            'type' => 'learning',
+        ]);
+    }
+
+    $query = http_build_query([
+        'subject_ids' => [
+            $subject->id,
+        ],
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson("/api/v1/buddies?{$query}");
+
+    $response
+        ->assertOk()
+        ->assertJsonPath(
+            'data.0.id',
+            $newerBuddy->id
+        )
+        ->assertJsonPath(
+            'data.0.match_score',
+            1
+        )
+        ->assertJsonPath(
+            'data.1.id',
+            $olderBuddy->id
+        )
+        ->assertJsonPath(
+            'data.1.match_score',
+            1
+        );
+    }
+    public function test_user_can_update_buddy_matching_profile_data(): void
+{
+    $user = User::factory()->create();
+
+    $database = $this->createSubject();
+    $web = $this->createSubject();
+
+    $response = $this
+        ->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile', [
+            'name' => 'Updated User',
+            'course' => 'Basis Data',
+            'skills' => [
+                'Laravel',
+                'SQL',
+            ],
+            'bio' => 'Saya suka belajar bersama.',
+            'learning_styles' => [
+                'Diskusi',
+                'Praktik Soal',
+            ],
+            'subject_ids' => [
+                $database->id,
+                $web->id,
+            ],
+            'availabilities' => [
+                [
+                    'day_of_week' => 1,
+                    'start_time' => '19:00',
+                    'end_time' => '21:00',
+                    'timezone' => 'Asia/Jakarta',
+                    'is_recurring' => true,
+                ],
+                [
+                    'day_of_week' => 3,
+                    'start_time' => '18:00',
+                    'end_time' => '20:00',
+                    'timezone' => 'Asia/Jakarta',
+                    'is_recurring' => true,
+                ],
+            ],
+        ]);
+
+    $response
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'Profil berhasil diperbarui'
+        )
+        ->assertJsonPath(
+            'user.name',
+            'Updated User'
+        )
+        ->assertJsonPath(
+            'user.learning_styles.0',
+            'Diskusi'
+        )
+        ->assertJsonCount(
+            2,
+            'user.subjects'
+        )
+        ->assertJsonCount(
+            2,
+            'user.availabilities'
+        );
+
+    $this->assertDatabaseHas(
+        'user_subjects',
+        [
+            'user_id' => $user->id,
+            'subject_id' => $database->id,
+            'type' => 'learning',
+        ]
+    );
+
+    $this->assertDatabaseHas(
+        'user_subjects',
+        [
+            'user_id' => $user->id,
+            'subject_id' => $web->id,
+            'type' => 'learning',
+        ]
+    );
+
+    $this->assertDatabaseHas(
+        'availabilities',
+        [
+            'user_id' => $user->id,
+            'day_of_week' => 1,
+        ]
+    );
+
+    $this->assertDatabaseHas(
+        'profiles',
+        [
+            'user_id' => $user->id,
+            'bio' => 'Saya suka belajar bersama.',
+        ]
+    );
+  }
+  public function test_user_can_clear_subjects_and_availabilities(): void
+{
+    $user = User::factory()->create();
+
+    $subject = $this->createSubject();
+
+    UserSubject::create([
+        'user_id' => $user->id,
+        'subject_id' => $subject->id,
+        'proficiency_level' => 'beginner',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $user->id,
+        'day_of_week' => 1,
+        'start_time' => '19:00',
+        'end_time' => '21:00',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    $response = $this
+        ->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile', [
+            'subject_ids' => [],
+            'availabilities' => [],
+            'learning_styles' => [],
+        ]);
+
+    $response
+        ->assertOk()
+        ->assertJsonCount(
+            0,
+            'user.subjects'
+        )
+        ->assertJsonCount(
+            0,
+            'user.availabilities'
+        )
+        ->assertJsonCount(
+            0,
+            'user.learning_styles'
+        );
+
+    $this->assertDatabaseMissing(
+        'user_subjects',
+        [
+            'user_id' => $user->id,
+            'type' => 'learning',
+        ]
+    );
+
+    $this->assertDatabaseMissing(
+        'availabilities',
+        [
+            'user_id' => $user->id,
+        ]
+    );
+  }
+   public function test_profile_rejects_invalid_availability_time(): void
+{
+    $user = User::factory()->create();
+
+    $response = $this
+        ->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile', [
+            'availabilities' => [
+                [
+                    'day_of_week' => 1,
+                    'start_time' => '21:00',
+                    'end_time' => '19:00',
+                ],
+            ],
+        ]);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'availabilities.0.end_time',
+        ]);
+    }
+    public function test_buddy_directory_automatically_scores_from_authenticated_user_profile(): void
+{
+    $currentUser = User::factory()->create([
+        'learning_styles' => ['Diskusi'],
+    ]);
+
+    $subject = $this->createSubject();
+
+    UserSubject::create([
+        'user_id' => $currentUser->id,
+        'subject_id' => $subject->id,
+        'proficiency_level' => 'beginner',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $currentUser->id,
+        'day_of_week' => 6,
+        'start_time' => '19:00',
+        'end_time' => '21:00',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    $bestBuddy = User::factory()->create([
+        'name' => 'Best Automatic Match',
+        'learning_styles' => ['Diskusi'],
+    ]);
+
+    UserSubject::create([
+        'user_id' => $bestBuddy->id,
+        'subject_id' => $subject->id,
+        'proficiency_level' => 'intermediate',
+        'type' => 'learning',
+    ]);
+
+    Availability::create([
+        'user_id' => $bestBuddy->id,
+        'day_of_week' => 6,
+        'start_time' => '20:00',
+        'end_time' => '22:00',
+        'timezone' => 'Asia/Jakarta',
+        'is_recurring' => true,
+    ]);
+
+    User::factory()->create([
+        'name' => 'No Automatic Match',
+        'learning_styles' => ['Visual'],
+    ]);
+
+    $response = $this
+        ->actingAs($currentUser, 'sanctum')
+        ->getJson('/api/v1/buddies');
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('matching.mode', 'profile')
+        ->assertJsonPath('matching.has_criteria', true)
+        ->assertJsonPath('data.0.id', $bestBuddy->id)
+        ->assertJsonPath('data.0.match_score', 3)
+        ->assertJsonPath('data.0.availability_match', true)
+        ->assertJsonPath('data.0.learning_style_match', true)
+        ->assertJsonPath('data.0.matched_subjects.0.id', $subject->id);
+    }
+
 }

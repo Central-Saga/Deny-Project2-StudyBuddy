@@ -69,12 +69,42 @@ Route::prefix('v1')->group(function () {
             [ProfileController::class, 'uploadAvatar']
         );
 
-        // Buddy
-        Route::get('/buddies', [BuddyController::class, 'index']);
+        // Buddy / Find Buddy
+        Route::get(
+            '/buddy-connections',
+            [BuddyController::class, 'connections']
+        );
+
+        Route::patch(
+            '/buddy-connections/{connection}/accept',
+            [BuddyController::class, 'accept']
+        );
+
+        Route::patch(
+            '/buddy-connections/{connection}/reject',
+            [BuddyController::class, 'reject']
+        );
+
+        Route::delete(
+            '/buddy-connections/{connection}',
+            [BuddyController::class, 'destroy']
+        );
+
+        Route::get(
+            '/buddies',
+            [BuddyController::class, 'index']
+        );
+
+        Route::get(
+            '/buddies/{id}',
+            [BuddyController::class, 'show']
+        )->whereNumber('id');
+
         Route::post(
             '/buddies/{id}/connect',
             [BuddyController::class, 'connect']
-        );
+        )->whereNumber('id');
+
 
         // Groups
         Route::get(
