@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react';
 
+import Image from 'next/image';
 import Link from 'next/link';
 
 import {
@@ -262,6 +263,39 @@ export default function DashboardLayout({
       active = false;
     };
   }, [router]);
+
+  // =========================================================
+  // SYNC USER DATA AFTER PROFILE UPDATE
+  // =========================================================
+  useEffect(() => {
+    const syncUserData = () => {
+      const savedUser =
+        localStorage.getItem('user_data');
+
+      if (!savedUser) {
+        return;
+      }
+
+      const parsedUser =
+        parseUserDto(savedUser);
+
+      if (parsedUser) {
+        setUserData(parsedUser);
+      }
+    };
+
+    window.addEventListener(
+      'user-data-updated',
+      syncUserData
+    );
+
+    return () => {
+      window.removeEventListener(
+        'user-data-updated',
+        syncUserData
+      );
+    };
+  }, []);
 
   // =========================================================
   // CLOSE MOBILE SIDEBAR AFTER NAVIGATION
@@ -1369,12 +1403,23 @@ export default function DashboardLayout({
               }
               className="flex items-center gap-2.5 rounded-xl p-1 transition hover:bg-slate-50 sm:pl-3"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-xs font-bold text-white shadow-sm shadow-blue-500/20">
-                {userData?.name
-                  ? userData.name
-                      .charAt(0)
-                      .toUpperCase()
-                  : 'U'}
+              <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-xs font-bold text-white shadow-sm shadow-blue-500/20">
+                {userData?.profile?.avatar_url ? (
+                  <Image
+                    src={userData.profile.avatar_url}
+                    alt={`Foto profil ${userData.name}`}
+                    fill
+                    sizes="36px"
+                    unoptimized
+                    className="object-cover"
+                  />
+                ) : (
+                  userData?.name
+                    ? userData.name
+                        .charAt(0)
+                        .toUpperCase()
+                    : 'U'
+                )}
               </div>
 
               <div className="hidden max-w-[145px] text-left sm:block">

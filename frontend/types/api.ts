@@ -1,7 +1,22 @@
+export interface UserProfileDto {
+  bio?: string | null;
+  avatar_url?: string | null;
+  phone_number?: string | null;
+  university?: string | null;
+  major?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+}
+
 export interface UserDto {
   id: number;
   name: string;
   email: string;
+  course?: string | null;
+  skills?: string[];
+  bio?: string | null;
+  profile?: UserProfileDto | null;
+  created_at?: string | null;
 }
 
 export interface SubjectDto {

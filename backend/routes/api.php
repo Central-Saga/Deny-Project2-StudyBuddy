@@ -59,7 +59,15 @@ Route::prefix('v1')->group(function () {
         );
 
         // Profile
-        Route::put('/profile', [ProfileController::class, 'update']);
+        Route::put(
+            '/profile',
+            [ProfileController::class, 'update']
+        );
+
+        Route::post(
+            '/profile/avatar',
+            [ProfileController::class, 'uploadAvatar']
+        );
 
         // Buddy
         Route::get('/buddies', [BuddyController::class, 'index']);
