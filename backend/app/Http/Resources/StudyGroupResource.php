@@ -7,9 +7,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class StudyGroupResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     */
     public function toArray(Request $request): array
     {
         return [
@@ -20,19 +17,32 @@ class StudyGroupResource extends JsonResource
             'slug' => $this->slug,
             'description' => $this->description,
             'max_members' => $this->max_members,
-            'is_private' => $this->is_private,
+            'is_private' => (bool) $this->is_private,
 
-            'creator' => UserResource::make(
-                $this->whenLoaded('creator')
-            ),
+            'creator' => $this->relationLoaded('creator')
+                ? [
+                    'id' => $this->creator->id,
+                    'name' => $this->creator->name,
+                ]
+                : null,
 
-            'subject' => SubjectResource::make(
-                $this->whenLoaded('subject')
-            ),
+            'subject' => $this->relationLoaded('subject')
+                ? [
+                    'id' => $this->subject->id,
+                    'code' => $this->subject->code,
+                    'name' => $this->subject->name,
+                ]
+                : null,
 
             'members' => GroupMemberResource::collection(
                 $this->whenLoaded('members')
             ),
+
+            'created_at' => $this->created_at
+                ?->toIso8601String(),
+
+            'updated_at' => $this->updated_at
+                ?->toIso8601String(),
         ];
     }
 }

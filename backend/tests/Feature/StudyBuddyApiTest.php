@@ -179,14 +179,14 @@ class StudyBuddyApiTest extends TestCase
             );
     }
 
-    public function test_group_member_can_create_study_session(): void
+    public function test_group_creator_can_create_study_session(): void
     {
-        $user = User::factory()->create();
+        $creator = User::factory()->create();
 
-        $group = $this->createGroup($user);
+        $group = $this->createGroup($creator);
 
         $response = $this
-            ->actingAs($user, 'sanctum')
+            ->actingAs($creator, 'sanctum')
             ->postJson('/api/v1/study-sessions', [
                 'study_group_id' => $group->id,
                 'title' => 'Test Study Session',
@@ -199,8 +199,14 @@ class StudyBuddyApiTest extends TestCase
 
         $response
             ->assertCreated()
-            ->assertJsonPath('message', 'Sesi belajar berhasil dibuat.')
-            ->assertJsonPath('data.title', 'Test Study Session')
+            ->assertJsonPath(
+                'message',
+                'Sesi belajar berhasil dibuat.'
+            )
+            ->assertJsonPath(
+                'data.title',
+                'Test Study Session'
+            )
             ->assertJsonStructure([
                 'message',
                 'data' => [
@@ -209,24 +215,63 @@ class StudyBuddyApiTest extends TestCase
                     'study_group_id',
                     'host_id',
                     'subject_id',
+                    'meeting_link',
                     'status',
                 ],
             ]);
 
         $this->assertDatabaseHas('study_sessions', [
             'study_group_id' => $group->id,
-            'host_id' => $user->id,
+            'host_id' => $creator->id,
             'title' => 'Test Study Session',
             'status' => 'scheduled',
         ]);
     }
 
+    public function test_regular_group_member_cannot_create_study_session(): void
+    {
+        $creator = User::factory()->create();
+        $member = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $group->members()->create([
+            'user_id' => $member->id,
+            'role' => 'member',
+            'status' => 'accepted',
+            'joined_at' => now(),
+        ]);
+
+        $response = $this
+            ->actingAs($member, 'sanctum')
+            ->postJson('/api/v1/study-sessions', [
+                'study_group_id' => $group->id,
+                'title' => 'Member Session',
+                'description' => 'Member biasa tidak boleh membuat sesi.',
+                'meeting_link' => 'https://meet.google.com/member-test',
+                'max_participants' => 10,
+                'scheduled_at' => '2030-01-15 19:00:00',
+                'duration_minutes' => 60,
+            ]);
+
+        $response
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'Hanya ketua grup yang dapat membuat sesi belajar.'
+            );
+
+        $this->assertDatabaseMissing('study_sessions', [
+            'title' => 'Member Session',
+        ]);
+    }
+
     public function test_non_member_cannot_create_study_session(): void
     {
-        $owner = User::factory()->create();
+        $creator = User::factory()->create();
         $outsider = User::factory()->create();
 
-        $group = $this->createGroup($owner);
+        $group = $this->createGroup($creator);
 
         $response = $this
             ->actingAs($outsider, 'sanctum')
@@ -244,7 +289,7 @@ class StudyBuddyApiTest extends TestCase
             ->assertForbidden()
             ->assertJsonPath(
                 'message',
-                'Anda bukan anggota aktif grup ini.'
+                'Hanya ketua grup yang dapat membuat sesi belajar.'
             );
 
         $this->assertDatabaseMissing('study_sessions', [
