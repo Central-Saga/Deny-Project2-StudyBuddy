@@ -50,6 +50,27 @@ class StudyBuddyApiTest extends TestCase
         return $group;
     }
 
+    private function createStudySession(
+        User $creator,
+        StudyGroup $group
+    ): int {
+        $response = $this
+            ->actingAs($creator, 'sanctum')
+            ->postJson('/api/v1/study-sessions', [
+                'study_group_id' => $group->id,
+                'title' => 'Session Participant Test',
+                'description' => 'Session untuk pengujian participant.',
+                'meeting_link' => 'https://meet.google.com/session-participant-test',
+                'max_participants' => 10,
+                'scheduled_at' => '2030-01-20 19:00:00',
+                'duration_minutes' => 60,
+            ]);
+
+        $response->assertCreated();
+
+        return (int) $response->json('data.id');
+    }
+
     public function test_user_can_register(): void
     {
         $response = $this->postJson('/api/v1/register', [
@@ -294,6 +315,241 @@ class StudyBuddyApiTest extends TestCase
 
         $this->assertDatabaseMissing('study_sessions', [
             'title' => 'Unauthorized Session',
+        ]);
+    }
+
+    public function test_accepted_group_member_can_join_study_session_and_receive_meeting_link(): void
+    {
+        $creator = User::factory()->create();
+        $member = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $group->members()->create([
+            'user_id' => $member->id,
+            'role' => 'member',
+            'status' => 'accepted',
+            'joined_at' => now(),
+        ]);
+
+        $sessionId = $this->createStudySession(
+            $creator,
+            $group
+        );
+
+        /*
+         * Sebelum join:
+         * sesi terlihat karena user anggota grup,
+         * tetapi meeting link harus disembunyikan.
+         */
+        $beforeJoin = $this
+            ->actingAs($member, 'sanctum')
+            ->getJson('/api/v1/study-sessions');
+
+        $beforeJoin
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $sessionId)
+            ->assertJsonPath('data.0.participants_count', 1)
+            ->assertJsonPath('data.0.is_joined', false)
+            ->assertJsonPath('data.0.meeting_link', null);
+
+        $joinResponse = $this
+            ->actingAs($member, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/join"
+            );
+
+        $joinResponse
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Berhasil bergabung ke sesi.'
+            );
+
+        $this->assertDatabaseHas('session_participants', [
+            'study_session_id' => $sessionId,
+            'user_id' => $member->id,
+            'role' => 'participant',
+            'status' => 'accepted',
+        ]);
+
+        /*
+         * Setelah join:
+         * participant count bertambah dan
+         * meeting link baru boleh diberikan.
+         */
+        $afterJoin = $this
+            ->actingAs($member, 'sanctum')
+            ->getJson('/api/v1/study-sessions');
+
+        $afterJoin
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $sessionId)
+            ->assertJsonPath('data.0.participants_count', 2)
+            ->assertJsonPath('data.0.is_joined', true)
+            ->assertJsonPath(
+                'data.0.meeting_link',
+                'https://meet.google.com/session-participant-test'
+            );
+    }
+
+    public function test_non_group_member_cannot_join_study_session(): void
+    {
+        $creator = User::factory()->create();
+        $outsider = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $sessionId = $this->createStudySession(
+            $creator,
+            $group
+        );
+
+        $response = $this
+            ->actingAs($outsider, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/join"
+            );
+
+        $response
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'Anda harus menjadi anggota aktif grup terlebih dahulu.'
+            );
+
+        $this->assertDatabaseMissing('session_participants', [
+            'study_session_id' => $sessionId,
+            'user_id' => $outsider->id,
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_pending_group_member_cannot_join_study_session(): void
+    {
+        $creator = User::factory()->create();
+        $pendingMember = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $group->members()->create([
+            'user_id' => $pendingMember->id,
+            'role' => 'member',
+            'status' => 'pending',
+            'joined_at' => null,
+        ]);
+
+        $sessionId = $this->createStudySession(
+            $creator,
+            $group
+        );
+
+        $response = $this
+            ->actingAs($pendingMember, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/join"
+            );
+
+        $response
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                'Anda harus menjadi anggota aktif grup terlebih dahulu.'
+            );
+
+        $this->assertDatabaseMissing('session_participants', [
+            'study_session_id' => $sessionId,
+            'user_id' => $pendingMember->id,
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_group_member_can_leave_study_session(): void
+    {
+        $creator = User::factory()->create();
+        $member = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $group->members()->create([
+            'user_id' => $member->id,
+            'role' => 'member',
+            'status' => 'accepted',
+            'joined_at' => now(),
+        ]);
+
+        $sessionId = $this->createStudySession(
+            $creator,
+            $group
+        );
+
+        $this
+            ->actingAs($member, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/join"
+            )
+            ->assertOk();
+
+        $leaveResponse = $this
+            ->actingAs($member, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/leave"
+            );
+
+        $leaveResponse
+            ->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Berhasil keluar dari sesi.'
+            );
+
+        $this->assertDatabaseHas('session_participants', [
+            'study_session_id' => $sessionId,
+            'user_id' => $member->id,
+            'status' => 'left',
+        ]);
+
+        $afterLeave = $this
+            ->actingAs($member, 'sanctum')
+            ->getJson('/api/v1/study-sessions');
+
+        $afterLeave
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $sessionId)
+            ->assertJsonPath('data.0.participants_count', 1)
+            ->assertJsonPath('data.0.is_joined', false)
+            ->assertJsonPath('data.0.meeting_link', null);
+    }
+
+    public function test_host_cannot_leave_own_study_session(): void
+    {
+        $creator = User::factory()->create();
+
+        $group = $this->createGroup($creator);
+
+        $sessionId = $this->createStudySession(
+            $creator,
+            $group
+        );
+
+        $response = $this
+            ->actingAs($creator, 'sanctum')
+            ->postJson(
+                "/api/v1/study-sessions/{$sessionId}/leave"
+            );
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'message',
+                'Host tidak dapat keluar dari sesi. Batalkan sesi jika sudah tidak digunakan.'
+            );
+
+        $this->assertDatabaseHas('session_participants', [
+            'study_session_id' => $sessionId,
+            'user_id' => $creator->id,
+            'role' => 'host',
+            'status' => 'accepted',
         ]);
     }
 

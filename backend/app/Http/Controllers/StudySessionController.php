@@ -12,14 +12,6 @@ use Illuminate\Support\Facades\DB;
 
 class StudySessionController extends Controller
 {
-    /**
-     * Menampilkan sesi belajar.
-     *
-     * Default:
-     * - hanya sesi yang terkait group
-     * - hanya group yang diikuti user
-     * - diurutkan berdasarkan jadwal
-     */
     public function index(Request $request)
     {
         $user = $request->user();
@@ -35,6 +27,13 @@ class StudySessionController extends Controller
                     $query->where('status', 'accepted');
                 },
             ])
+            ->withExists([
+                'participants as is_joined' => function ($query) use ($user) {
+                    $query
+                        ->where('user_id', $user->id)
+                        ->where('status', 'accepted');
+                },
+            ])
             ->whereHas(
                 'studyGroup.members',
                 function ($query) use ($user) {
@@ -48,98 +47,47 @@ class StudySessionController extends Controller
 
         return response()->json([
             'message' => 'Daftar sesi berhasil diambil.',
-
-            'data' =>
-                StudySessionResource::collection($sessions)
-                    ->resolve($request),
+            'data' => StudySessionResource::collection($sessions)
+                ->resolve($request),
         ]);
     }
 
-    /**
-     * Membuat sesi belajar baru.
-     *
-     * Hanya creator / ketua grup yang
-     * diperbolehkan membuat sesi.
-     */
     public function store(StoreStudySessionRequest $request)
     {
         $validated = $request->validated();
-
         $user = $request->user();
 
         $group = StudyGroup::findOrFail(
             $validated['study_group_id']
         );
 
-        /*
-         * Hanya creator / ketua grup
-         * yang boleh membuat sesi belajar.
-         */
-        if ($group->creator_id !== $user->id) {
+        if ((int) $group->creator_id !== (int) $user->id) {
             return response()->json([
-                'message' =>
-                    'Hanya ketua grup yang dapat membuat sesi belajar.',
+                'message' => 'Hanya ketua grup yang dapat membuat sesi belajar.',
             ], 403);
         }
 
-        /*
-         * Subject sesi otomatis mengikuti
-         * subject grup.
-         *
-         * subject_id tidak diterima dari frontend
-         * agar tidak terjadi perbedaan subject.
-         */
         DB::beginTransaction();
 
         try {
             $session = StudySession::create([
-                'host_id' =>
-                    $user->id,
-
-                'study_group_id' =>
-                    $group->id,
-
-                'subject_id' =>
-                    $group->subject_id,
-
-                'title' =>
-                    $validated['title'],
-
-                'description' =>
-                    $validated['description'] ?? null,
-
-                'meeting_link' =>
-                    $validated['meeting_link'] ?? null,
-
-                'max_participants' =>
-                    $validated['max_participants'],
-
-                'scheduled_at' =>
-                    $validated['scheduled_at'],
-
-                'duration_minutes' =>
-                    $validated['duration_minutes'],
-
-                'status' =>
-                    'scheduled',
+                'host_id' => $user->id,
+                'study_group_id' => $group->id,
+                'subject_id' => $group->subject_id,
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'meeting_link' => $validated['meeting_link'] ?? null,
+                'max_participants' => $validated['max_participants'],
+                'scheduled_at' => $validated['scheduled_at'],
+                'duration_minutes' => $validated['duration_minutes'],
+                'status' => 'scheduled',
             ]);
 
-            /*
-             * Ketua / host otomatis menjadi
-             * participant sesi.
-             */
             $session->participants()->create([
-                'user_id' =>
-                    $user->id,
-
-                'role' =>
-                    'host',
-
-                'status' =>
-                    'accepted',
-
-                'joined_at' =>
-                    now(),
+                'user_id' => $user->id,
+                'role' => 'host',
+                'status' => 'accepted',
+                'joined_at' => now(),
             ]);
 
             DB::commit();
@@ -152,22 +100,17 @@ class StudySessionController extends Controller
             ]);
 
             $session->loadCount([
-                'participants as participants_count' =>
-                    function ($query) {
-                        $query->where(
-                            'status',
-                            'accepted'
-                        );
-                    },
+                'participants as participants_count' => function ($query) {
+                    $query->where('status', 'accepted');
+                },
             ]);
 
-            return response()->json([
-                'message' =>
-                    'Sesi belajar berhasil dibuat.',
+            $session->setAttribute('is_joined', true);
 
-                'data' =>
-                    (new StudySessionResource($session))
-                        ->resolve($request),
+            return response()->json([
+                'message' => 'Sesi belajar berhasil dibuat.',
+                'data' => (new StudySessionResource($session))
+                    ->resolve($request),
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -175,18 +118,11 @@ class StudySessionController extends Controller
             report($e);
 
             return response()->json([
-                'message' =>
-                    'Gagal membuat sesi belajar.',
+                'message' => 'Gagal membuat sesi belajar.',
             ], 500);
         }
     }
 
-    /**
-     * Menampilkan detail satu sesi.
-     *
-     * Hanya anggota aktif dari grup
-     * yang dapat melihat sesi.
-     */
     public function show(
         Request $request,
         StudySession $studySession
@@ -197,23 +133,15 @@ class StudySessionController extends Controller
             'studyGroup.members',
         ]);
 
-        $isMember =
-            $studySession->studyGroup
-                ->members()
-                ->where(
-                    'user_id',
-                    $user->id
-                )
-                ->where(
-                    'status',
-                    'accepted'
-                )
-                ->exists();
+        $isMember = $studySession->studyGroup
+            ->members()
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
 
         if (!$isMember) {
             return response()->json([
-                'message' =>
-                    'Anda tidak memiliki akses ke sesi ini.',
+                'message' => 'Anda tidak memiliki akses ke sesi ini.',
             ], 403);
         }
 
@@ -225,31 +153,28 @@ class StudySessionController extends Controller
         ]);
 
         $studySession->loadCount([
-            'participants as participants_count' =>
-                function ($query) {
-                    $query->where(
-                        'status',
-                        'accepted'
-                    );
-                },
+            'participants as participants_count' => function ($query) {
+                $query->where('status', 'accepted');
+            },
         ]);
 
-        return response()->json([
-            'message' =>
-                'Detail sesi berhasil diambil.',
+        $isJoined = $studySession->participants()
+            ->where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
 
-            'data' =>
-                (new StudySessionResource($studySession))
-                    ->resolve($request),
+        $studySession->setAttribute(
+            'is_joined',
+            $isJoined
+        );
+
+        return response()->json([
+            'message' => 'Detail sesi berhasil diambil.',
+            'data' => (new StudySessionResource($studySession))
+                ->resolve($request),
         ]);
     }
 
-    /**
-     * Mengubah sesi.
-     *
-     * Hanya host sesi yang boleh
-     * melakukan perubahan.
-     */
     public function update(
         UpdateStudySessionRequest $request,
         StudySession $studySession
@@ -257,69 +182,40 @@ class StudySessionController extends Controller
         $user = $request->user();
 
         if (
-            $studySession->host_id !==
-            $user->id
+            (int) $studySession->host_id !==
+            (int) $user->id
         ) {
             return response()->json([
-                'message' =>
-                    'Hanya host yang dapat mengubah sesi.',
+                'message' => 'Hanya host yang dapat mengubah sesi.',
             ], 403);
         }
 
-        if (
-            $studySession->status !==
-            'scheduled'
-        ) {
+        if ($studySession->status !== 'scheduled') {
             return response()->json([
-                'message' =>
-                    'Sesi yang sudah berjalan/selesai tidak dapat diubah.',
+                'message' => 'Sesi yang sudah berjalan/selesai tidak dapat diubah.',
             ], 422);
         }
 
-        $validated =
-            $request->validated();
+        $validated = $request->validated();
 
-        /*
-         * Kapasitas baru tidak boleh
-         * lebih kecil daripada peserta aktif.
-         */
-        if (
-            isset(
-                $validated['max_participants']
-            )
-        ) {
-            $participantCount =
-                $studySession->participants()
-                    ->where(
-                        'status',
-                        'accepted'
-                    )
-                    ->count();
+        if (isset($validated['max_participants'])) {
+            $participantCount = $studySession->participants()
+                ->where('status', 'accepted')
+                ->count();
 
-            if (
-                $validated['max_participants'] <
-                $participantCount
-            ) {
+            if ($validated['max_participants'] < $participantCount) {
                 return response()->json([
-                    'message' =>
-                        'Kapasitas baru tidak boleh lebih kecil dari jumlah peserta saat ini.',
+                    'message' => 'Kapasitas baru tidak boleh lebih kecil dari jumlah peserta saat ini.',
                 ], 422);
             }
         }
 
-        /*
-         * study_group_id dan subject_id
-         * tidak diubah melalui update sesi.
-         */
         unset(
             $validated['study_group_id'],
             $validated['subject_id']
         );
 
-        $studySession->update(
-            $validated
-        );
-
+        $studySession->update($validated);
         $studySession->refresh();
 
         $studySession->load([
@@ -330,31 +226,20 @@ class StudySessionController extends Controller
         ]);
 
         $studySession->loadCount([
-            'participants as participants_count' =>
-                function ($query) {
-                    $query->where(
-                        'status',
-                        'accepted'
-                    );
-                },
+            'participants as participants_count' => function ($query) {
+                $query->where('status', 'accepted');
+            },
         ]);
 
-        return response()->json([
-            'message' =>
-                'Sesi berhasil diperbarui.',
+        $studySession->setAttribute('is_joined', true);
 
-            'data' =>
-                (new StudySessionResource($studySession))
-                    ->resolve($request),
+        return response()->json([
+            'message' => 'Sesi berhasil diperbarui.',
+            'data' => (new StudySessionResource($studySession))
+                ->resolve($request),
         ]);
     }
 
-    /**
-     * Membatalkan sesi.
-     *
-     * Hanya host yang boleh
-     * membatalkan sesi.
-     */
     public function destroy(
         Request $request,
         StudySession $studySession
@@ -362,33 +247,26 @@ class StudySessionController extends Controller
         $user = $request->user();
 
         if (
-            $studySession->host_id !==
-            $user->id
+            (int) $studySession->host_id !==
+            (int) $user->id
         ) {
             return response()->json([
-                'message' =>
-                    'Hanya host yang dapat membatalkan sesi.',
+                'message' => 'Hanya host yang dapat membatalkan sesi.',
             ], 403);
         }
 
-        if (
-            $studySession->status !==
-            'scheduled'
-        ) {
+        if ($studySession->status !== 'scheduled') {
             return response()->json([
-                'message' =>
-                    'Sesi ini sudah tidak dapat dibatalkan.',
+                'message' => 'Sesi ini sudah tidak dapat dibatalkan.',
             ], 422);
         }
 
         $studySession->update([
-            'status' =>
-                'cancelled',
+            'status' => 'cancelled',
         ]);
 
         return response()->json([
-            'message' =>
-                'Sesi berhasil dibatalkan.',
+            'message' => 'Sesi berhasil dibatalkan.',
         ]);
     }
 }
