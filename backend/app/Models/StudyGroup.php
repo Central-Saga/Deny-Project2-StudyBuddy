@@ -21,6 +21,11 @@ class StudyGroup extends Model
         'is_private',
     ];
 
+    protected $casts = [
+        'is_private' => 'boolean',
+        'max_members' => 'integer',
+    ];
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'creator_id');

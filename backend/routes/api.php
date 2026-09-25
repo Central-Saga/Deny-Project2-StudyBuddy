@@ -77,11 +77,40 @@ Route::prefix('v1')->group(function () {
         );
 
         // Groups
-        Route::get('/groups', [GroupController::class, 'index']);
-        Route::post('/groups', [GroupController::class, 'store']);
+        Route::get(
+            '/groups',
+            [GroupController::class, 'index']
+        );
+
         Route::post(
-            '/groups/{id}/toggle-join',
+            '/groups',
+            [GroupController::class, 'store']
+        );
+
+
+        Route::get(
+            '/groups/{group}',
+            [GroupController::class, 'show']
+        );
+
+        Route::put(
+            '/groups/{group}',
+            [GroupController::class, 'update']
+        );
+
+        Route::delete(
+            '/groups/{group}',
+            [GroupController::class, 'destroy']
+        );
+
+        Route::post(
+            '/groups/{group}/toggle-join',
             [GroupController::class, 'joinToggle']
+        );
+
+        Route::patch(
+            '/groups/{group}/members/{member}/status',
+            [GroupController::class, 'updateMemberStatus']
         );
 
         // Quiz
