@@ -7,10 +7,43 @@ use App\Http\Resources\TutoringReviewResource;
 use App\Models\TutoringRequest;
 use App\Models\TutoringReview;
 use App\Models\TutorProfile;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class TutoringReviewController extends Controller
 {
+    /**
+     * Menampilkan daftar review untuk satu tutor.
+     */
+    public function index(Request $request, TutorProfile $tutorProfile)
+    {
+        $reviews = TutoringReview::query()
+            ->with('student:id,name')
+            ->where('tutor_profile_id', $tutorProfile->id)
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'tutor' => [
+                'id' => $tutorProfile->id,
+                'rating_avg' => (float) $tutorProfile->rating_avg,
+                'reviews_count' => (int) $tutorProfile->reviews_count,
+            ],
+            'data' => $reviews->map(function (TutoringReview $review) {
+                return [
+                    'id' => $review->id,
+                    'rating' => (int) $review->rating,
+                    'comment' => $review->comment,
+                    'student' => $review->student ? [
+                        'id' => $review->student->id,
+                        'name' => $review->student->name,
+                    ] : null,
+                    'created_at' => $review->created_at?->toIso8601String(),
+                ];
+            })->values(),
+        ]);
+    }
+
     /**
      * Membuat review setelah sesi tutoring selesai.
      */
