@@ -182,6 +182,20 @@ Route::prefix('v1')->group(function () {
             '/tutoring/requests/{tutoringRequest}/reviews',
             [TutoringReviewController::class, 'store']
         );
+        Route::patch(
+            '/tutoring/profile/status',
+            [TutoringController::class, 'updateProfileStatus']
+        );
+
+        Route::patch(
+            '/tutoring/requests/{id}/session',
+            [TutoringController::class, 'updateSession']
+        );
+        Route::get(
+            '/tutoring/tutors/{tutorProfile}/reviews',
+            [TutoringReviewController::class, 'index']
+        );
+
 
         // Notifications
         Route::get(
