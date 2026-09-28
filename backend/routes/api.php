@@ -147,14 +147,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/quizzes', [QuizController::class, 'index']);
         Route::post('/quizzes', [QuizController::class, 'store']);
         Route::get('/quizzes/{quiz}', [QuizController::class, 'show']);
-        Route::post(
-            '/quizzes/{quiz}/attempts',
-            [QuizController::class, 'start']
-        );
-        Route::post(
-            '/quizzes/{quiz}/attempts/{attempt}/submit',
-            [QuizController::class, 'submit']
-        );
+        Route::put('/quizzes/{quiz}', [QuizController::class, 'update']);
+        Route::delete('/quizzes/{quiz}', [QuizController::class, 'destroy']);
+        Route::post('/quizzes/{quiz}/attempts', [QuizController::class, 'start']);
+        Route::post('/quizzes/{quiz}/attempts/{attempt}/submit', [QuizController::class, 'submit']);
+
 
         // Peer Tutoring
         Route::get(
