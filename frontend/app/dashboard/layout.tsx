@@ -34,7 +34,8 @@ import {
 } from 'lucide-react';
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || '/api/v1'
+  process.env.NEXT_PUBLIC_API_URL ||
+  '/api/v1'
 ).replace(/\/$/, '');
 
 function getStoredToken(): string {
@@ -44,7 +45,9 @@ function getStoredToken(): string {
 
   return (
     localStorage.getItem('access_token') ||
-    localStorage.getItem('meetspace_auth_token') ||
+    localStorage.getItem(
+      'meetspace_auth_token'
+    ) ||
     ''
   );
 }
@@ -54,9 +57,17 @@ function clearAuthStorage(): void {
     return;
   }
 
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('meetspace_auth_token');
-  localStorage.removeItem('user_data');
+  localStorage.removeItem(
+    'access_token'
+  );
+
+  localStorage.removeItem(
+    'meetspace_auth_token'
+  );
+
+  localStorage.removeItem(
+    'user_data'
+  );
 }
 
 export default function DashboardLayout({
@@ -68,7 +79,9 @@ export default function DashboardLayout({
   const router = useRouter();
 
   const searchInputRef =
-    useRef<HTMLInputElement | null>(null);
+    useRef<HTMLInputElement | null>(
+      null
+    );
 
   // =========================================================
   // AUTH
@@ -76,8 +89,18 @@ export default function DashboardLayout({
   const [userData, setUserData] =
     useState<UserDto | null>(null);
 
-  const [authLoading, setAuthLoading] =
-    useState(true);
+  const [
+    authLoading,
+    setAuthLoading,
+  ] = useState(true);
+
+  // =========================================================
+  // NOTIFICATIONS
+  // =========================================================
+  const [
+    unreadNotificationCount,
+    setUnreadNotificationCount,
+  ] = useState(0);
 
   // =========================================================
   // SIDEBAR
@@ -108,8 +131,10 @@ export default function DashboardLayout({
   // =========================================================
   // SEARCH
   // =========================================================
-  const [searchQuery, setSearchQuery] =
-    useState('');
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState('');
 
   const [
     searchFocused,
@@ -124,17 +149,23 @@ export default function DashboardLayout({
 
     const checkAuthentication =
       async () => {
-        const token = getStoredToken();
+        const token =
+          getStoredToken();
 
         if (!token) {
           clearAuthStorage();
-          router.replace('/login');
+
+          router.replace(
+            '/login'
+          );
+
           return;
         }
 
-        // Sinkronkan token lama agar fitur yang
-        // masih menggunakan meetspace_auth_token
-        // tetap bekerja.
+        /*
+         * Sinkronkan kedua token agar
+         * fitur lama tetap bekerja.
+         */
         localStorage.setItem(
           'access_token',
           token
@@ -145,7 +176,9 @@ export default function DashboardLayout({
           token
         );
 
-        // Tampilkan data lokal terlebih dahulu.
+        /*
+         * Tampilkan data lokal dahulu.
+         */
         const savedUser =
           localStorage.getItem(
             'user_data'
@@ -154,7 +187,9 @@ export default function DashboardLayout({
         if (savedUser) {
           try {
             const parsedUser =
-              parseUserDto(savedUser);
+              parseUserDto(
+                savedUser
+              );
 
             if (
               parsedUser &&
@@ -177,7 +212,8 @@ export default function DashboardLayout({
             await fetch(
               `${API_URL}/me`,
               {
-                method: 'GET',
+                method:
+                  'GET',
 
                 headers: {
                   Accept:
@@ -187,7 +223,8 @@ export default function DashboardLayout({
                     `Bearer ${token}`,
                 },
 
-                cache: 'no-store',
+                cache:
+                  'no-store',
               }
             );
 
@@ -257,7 +294,7 @@ export default function DashboardLayout({
         }
       };
 
-    checkAuthentication();
+    void checkAuthentication();
 
     return () => {
       active = false;
@@ -268,21 +305,28 @@ export default function DashboardLayout({
   // SYNC USER DATA AFTER PROFILE UPDATE
   // =========================================================
   useEffect(() => {
-    const syncUserData = () => {
-      const savedUser =
-        localStorage.getItem('user_data');
+    const syncUserData =
+      () => {
+        const savedUser =
+          localStorage.getItem(
+            'user_data'
+          );
 
-      if (!savedUser) {
-        return;
-      }
+        if (!savedUser) {
+          return;
+        }
 
-      const parsedUser =
-        parseUserDto(savedUser);
+        const parsedUser =
+          parseUserDto(
+            savedUser
+          );
 
-      if (parsedUser) {
-        setUserData(parsedUser);
-      }
-    };
+        if (parsedUser) {
+          setUserData(
+            parsedUser
+          );
+        }
+      };
 
     window.addEventListener(
       'user-data-updated',
@@ -298,10 +342,127 @@ export default function DashboardLayout({
   }, []);
 
   // =========================================================
+  // NOTIFICATION UNREAD COUNT
+  // =========================================================
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    let active = true;
+
+    const loadUnreadNotifications =
+      async () => {
+        const token =
+          getStoredToken();
+
+        if (!token) {
+          if (active) {
+            setUnreadNotificationCount(
+              0
+            );
+          }
+
+          return;
+        }
+
+        try {
+          const response =
+            await fetch(
+              `${API_URL}/notifications`,
+              {
+                method:
+                  'GET',
+
+                headers: {
+                  Accept:
+                    'application/json',
+
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+
+                cache:
+                  'no-store',
+              }
+            );
+
+          if (!response.ok) {
+            if (
+              response.status ===
+                401 &&
+              active
+            ) {
+              setUnreadNotificationCount(
+                0
+              );
+            }
+
+            return;
+          }
+
+          const payload =
+            await response.json();
+
+          if (active) {
+            setUnreadNotificationCount(
+              Number(
+                payload
+                  ?.unread_count ||
+                  0
+              )
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Gagal mengambil jumlah notifikasi:',
+            error
+          );
+        }
+      };
+
+    /*
+     * Ambil unread count ketika
+     * dashboard pertama kali dibuka
+     * dan ketika route berubah.
+     */
+    void loadUnreadNotifications();
+
+    /*
+     * Halaman Notifications akan
+     * mengirim event ini setelah
+     * mark read / mark all read.
+     */
+    const handleNotificationUpdate =
+      () => {
+        void loadUnreadNotifications();
+      };
+
+    window.addEventListener(
+      'studybuddy:notifications-updated',
+      handleNotificationUpdate
+    );
+
+    return () => {
+      active = false;
+
+      window.removeEventListener(
+        'studybuddy:notifications-updated',
+        handleNotificationUpdate
+      );
+    };
+  }, [
+    authLoading,
+    pathname,
+  ]);
+
+  // =========================================================
   // CLOSE MOBILE SIDEBAR AFTER NAVIGATION
   // =========================================================
   useEffect(() => {
-    setMobileSidebarOpen(false);
+    setMobileSidebarOpen(
+      false
+    );
   }, [pathname]);
 
   // =========================================================
@@ -312,7 +473,8 @@ export default function DashboardLayout({
       event: KeyboardEvent
     ) => {
       if (
-        event.key === 'Escape'
+        event.key ===
+        'Escape'
       ) {
         setMobileSidebarOpen(
           false
@@ -326,7 +488,8 @@ export default function DashboardLayout({
           false
         );
 
-        searchInputRef.current?.blur();
+        searchInputRef.current
+          ?.blur();
       }
     };
 
@@ -344,7 +507,7 @@ export default function DashboardLayout({
   }, []);
 
   // =========================================================
-  // LOCK BODY ONLY FOR MOBILE SIDEBAR / MODAL
+  // LOCK BODY
   // =========================================================
   useEffect(() => {
     if (
@@ -375,14 +538,17 @@ export default function DashboardLayout({
       const token =
         getStoredToken();
 
-      setLogoutLoading(true);
+      setLogoutLoading(
+        true
+      );
 
       try {
         if (token) {
           await fetch(
             `${API_URL}/logout`,
             {
-              method: 'POST',
+              method:
+                'POST',
 
               headers: {
                 Accept:
@@ -403,6 +569,10 @@ export default function DashboardLayout({
         clearAuthStorage();
 
         setUserData(null);
+
+        setUnreadNotificationCount(
+          0
+        );
 
         setLogoutLoading(
           false
@@ -431,56 +601,49 @@ export default function DashboardLayout({
       href: '/dashboard',
       icon: Home,
     },
-
     {
       name: 'Cari Buddy',
       href:
         '/dashboard/find-buddy',
       icon: Search,
     },
-
     {
       name: 'Grup',
       href:
         '/dashboard/groups',
       icon: Users,
     },
-
     {
       name: 'Kalender',
       href:
         '/dashboard/calendar',
       icon: Calendar,
     },
-
     {
       name: 'Materi',
       href:
         '/dashboard/materials',
       icon: BookOpen,
     },
-
     {
       name: 'Kuis',
       href:
         '/dashboard/quizzes',
       icon: FileQuestion,
     },
-
     {
-      name: 'Peer Tutoring',
+      name:
+        'Peer Tutoring',
       href:
         '/dashboard/tutoring',
       icon: MessageSquare,
     },
-
     {
       name: 'Notifikasi',
       href:
         '/dashboard/notifications',
       icon: Bell,
     },
-
     {
       name: 'Profil',
       href:
@@ -495,14 +658,11 @@ export default function DashboardLayout({
   const searchableItems = [
     {
       name: 'Beranda',
-
       description:
         'Kembali ke halaman utama dashboard',
-
-      href: '/dashboard',
-
+      href:
+        '/dashboard',
       icon: Home,
-
       keywords: [
         'beranda',
         'dashboard',
@@ -510,18 +670,13 @@ export default function DashboardLayout({
         'utama',
       ],
     },
-
     {
       name: 'Cari Buddy',
-
       description:
         'Temukan teman belajar',
-
       href:
         '/dashboard/find-buddy',
-
       icon: Search,
-
       keywords: [
         'buddy',
         'teman',
@@ -530,18 +685,14 @@ export default function DashboardLayout({
         'partner',
       ],
     },
-
     {
-      name: 'Grup Belajar',
-
+      name:
+        'Grup Belajar',
       description:
         'Lihat dan kelola grup belajar',
-
       href:
         '/dashboard/groups',
-
       icon: Users,
-
       keywords: [
         'grup',
         'group',
@@ -550,18 +701,13 @@ export default function DashboardLayout({
         'diskusi',
       ],
     },
-
     {
       name: 'Kalender',
-
       description:
         'Lihat jadwal dan agenda belajar',
-
       href:
         '/dashboard/calendar',
-
       icon: Calendar,
-
       keywords: [
         'kalender',
         'jadwal',
@@ -571,18 +717,13 @@ export default function DashboardLayout({
         'tanggal',
       ],
     },
-
     {
       name: 'Materi',
-
       description:
         'Temukan materi belajar',
-
       href:
         '/dashboard/materials',
-
       icon: BookOpen,
-
       keywords: [
         'materi',
         'mata kuliah',
@@ -592,18 +733,14 @@ export default function DashboardLayout({
         'pdf',
       ],
     },
-
     {
       name: 'Kuis',
-
       description:
         'Kerjakan dan kelola kuis',
-
       href:
         '/dashboard/quizzes',
-
-      icon: FileQuestion,
-
+      icon:
+        FileQuestion,
       keywords: [
         'kuis',
         'quiz',
@@ -612,18 +749,15 @@ export default function DashboardLayout({
         'ujian',
       ],
     },
-
     {
-      name: 'Peer Tutoring',
-
+      name:
+        'Peer Tutoring',
       description:
         'Cari tutor dan sesi tutoring',
-
       href:
         '/dashboard/tutoring',
-
-      icon: MessageSquare,
-
+      icon:
+        MessageSquare,
       keywords: [
         'tutor',
         'tutoring',
@@ -631,18 +765,13 @@ export default function DashboardLayout({
         'bimbingan',
       ],
     },
-
     {
       name: 'Notifikasi',
-
       description:
         'Lihat pemberitahuan terbaru',
-
       href:
         '/dashboard/notifications',
-
       icon: Bell,
-
       keywords: [
         'notifikasi',
         'notification',
@@ -650,18 +779,13 @@ export default function DashboardLayout({
         'pesan',
       ],
     },
-
     {
       name: 'Profil',
-
       description:
         'Lihat dan ubah data profil',
-
       href:
         '/dashboard/profile',
-
       icon: User,
-
       keywords: [
         'profil',
         'profile',
@@ -715,7 +839,8 @@ export default function DashboardLayout({
     href: string
   ) => {
     if (
-      href === '/dashboard'
+      href ===
+      '/dashboard'
     ) {
       return (
         pathname === href
@@ -734,13 +859,13 @@ export default function DashboardLayout({
     href: string
   ) => {
     setSearchQuery('');
-    setSearchFocused(false);
 
-    // Penting:
-    // input harus kehilangan fokus agar
-    // onFocus bekerja kembali ketika
-    // user menggunakan search berikutnya.
-    searchInputRef.current?.blur();
+    setSearchFocused(
+      false
+    );
+
+    searchInputRef.current
+      ?.blur();
 
     router.push(href);
   };
@@ -760,13 +885,13 @@ export default function DashboardLayout({
 
           <div className="text-center">
             <p className="text-sm font-semibold text-slate-700">
-              Menyiapkan
-              Study Buddy
+              Menyiapkan Study
+              Buddy
             </p>
 
             <p className="mt-1 text-xs text-slate-400">
-              Memverifikasi
-              sesi Anda...
+              Memverifikasi sesi
+              Anda...
             </p>
           </div>
         </div>
@@ -775,13 +900,6 @@ export default function DashboardLayout({
   }
 
   return (
-    // =======================================================
-    // h-screen + overflow-hidden
-    //
-    // Ini membuat seluruh dashboard diam.
-    // Hanya area page content yang nanti
-    // memiliki overflow-y-auto.
-    // =======================================================
     <div className="flex h-screen w-full overflow-hidden bg-slate-50">
       {/* =====================================================
           MOBILE OVERLAY
@@ -852,13 +970,8 @@ export default function DashboardLayout({
           }
         `}
       >
-        {/* ===================================================
-            SIDEBAR TOP
-        ==================================================== */}
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* ===============================================
-              LOGO
-          ================================================ */}
+          {/* LOGO */}
           <div className="flex h-[68px] flex-shrink-0 items-center justify-between border-b border-slate-100 px-4">
             <Link
               href="/dashboard"
@@ -880,7 +993,6 @@ export default function DashboardLayout({
               </div>
             </Link>
 
-            {/* Mobile sidebar close */}
             <button
               type="button"
               aria-label="Tutup sidebar"
@@ -899,9 +1011,7 @@ export default function DashboardLayout({
             </button>
           </div>
 
-          {/* ===============================================
-              MENU
-          ================================================ */}
+          {/* MENU */}
           <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
             <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
               Menu Utama
@@ -980,9 +1090,7 @@ export default function DashboardLayout({
           </nav>
         </div>
 
-        {/* ===================================================
-            LOGOUT
-        ==================================================== */}
+        {/* LOGOUT */}
         <div className="flex-shrink-0 border-t border-slate-100 p-3">
           <button
             type="button"
@@ -1006,17 +1114,11 @@ export default function DashboardLayout({
           MAIN
       ====================================================== */}
       <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-        {/* ===================================================
-            HEADER
-        ==================================================== */}
+        {/* HEADER */}
         <header className="relative z-30 flex h-[68px] flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-xl sm:px-5 lg:px-6">
-          {/* =================================================
-              LEFT
-          ================================================== */}
+          {/* LEFT */}
           <div className="flex min-w-0 items-center gap-3">
-            {/* ===============================================
-                MOBILE HAMBURGER
-            ================================================ */}
+            {/* MOBILE HAMBURGER */}
             <button
               type="button"
               aria-label={
@@ -1090,9 +1192,7 @@ export default function DashboardLayout({
               </div>
             </button>
 
-            {/* ===============================================
-                DESKTOP HAMBURGER
-            ================================================ */}
+            {/* DESKTOP HAMBURGER */}
             <button
               type="button"
               aria-label={
@@ -1166,9 +1266,7 @@ export default function DashboardLayout({
               </div>
             </button>
 
-            {/* ===============================================
-                GLOBAL SEARCH
-            ================================================ */}
+            {/* GLOBAL SEARCH */}
             <div className="relative hidden w-60 md:block xl:w-72">
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -1231,7 +1329,8 @@ export default function DashboardLayout({
                         false
                       );
 
-                      searchInputRef.current?.blur();
+                      searchInputRef.current
+                        ?.blur();
                     }
                   }}
                   placeholder="Cari fitur, grup, materi..."
@@ -1256,7 +1355,8 @@ export default function DashboardLayout({
                         true
                       );
 
-                      searchInputRef.current?.focus();
+                      searchInputRef.current
+                        ?.focus();
                     }}
                     className="absolute right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-xs text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
                   >
@@ -1265,15 +1365,14 @@ export default function DashboardLayout({
                 )}
               </div>
 
-              {/* =============================================
-                  SEARCH RESULTS
-              ============================================== */}
+              {/* SEARCH RESULTS */}
               {searchFocused &&
                 searchQuery.trim() && (
                   <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
                     <div className="border-b border-slate-100 px-3.5 py-2.5">
                       <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                        Hasil Pencarian
+                        Hasil
+                        Pencarian
                       </p>
                     </div>
 
@@ -1293,10 +1392,6 @@ export default function DashboardLayout({
                                   item.href
                                 }
                                 type="button"
-
-                                // Jangan preventDefault di sini.
-                                // Input harus boleh kehilangan
-                                // fokus setelah memilih hasil.
                                 onClick={() =>
                                   openSearchResult(
                                     item.href
@@ -1331,7 +1426,8 @@ export default function DashboardLayout({
                         <Search className="mx-auto h-6 w-6 text-slate-300" />
 
                         <p className="mt-2 text-xs font-semibold text-slate-600">
-                          Tidak ditemukan
+                          Tidak
+                          ditemukan
                         </p>
 
                         <p className="mt-1 text-[10px] text-slate-400">
@@ -1355,9 +1451,7 @@ export default function DashboardLayout({
                 )}
             </div>
 
-            {/* ===============================================
-                MOBILE BRAND
-            ================================================ */}
+            {/* MOBILE BRAND */}
             <div className="min-w-0 md:hidden">
               <p className="truncate text-xs font-bold text-slate-800">
                 Study Buddy
@@ -1369,16 +1463,17 @@ export default function DashboardLayout({
             </div>
           </div>
 
-          {/* =================================================
-              RIGHT
-          ================================================== */}
+          {/* RIGHT */}
           <div className="flex items-center gap-1.5 sm:gap-3">
-            {/* ===============================================
-                NOTIFICATIONS
-            ================================================ */}
+            {/* NOTIFICATIONS */}
             <button
               type="button"
-              aria-label="Buka notifikasi"
+              aria-label={
+                unreadNotificationCount >
+                0
+                  ? `Buka notifikasi, ${unreadNotificationCount} belum dibaca`
+                  : 'Buka notifikasi'
+              }
               onClick={() =>
                 router.push(
                   '/dashboard/notifications'
@@ -1388,12 +1483,18 @@ export default function DashboardLayout({
             >
               <Bell className="h-[18px] w-[18px]" />
 
-              <span className="absolute right-[7px] top-[7px] h-2 w-2 rounded-full border-2 border-white bg-red-500" />
+              {unreadNotificationCount >
+                0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
+                  {unreadNotificationCount >
+                  99
+                    ? '99+'
+                    : unreadNotificationCount}
+                </span>
+              )}
             </button>
 
-            {/* ===============================================
-                PROFILE
-            ================================================ */}
+            {/* PROFILE */}
             <button
               type="button"
               onClick={() =>
@@ -1404,21 +1505,27 @@ export default function DashboardLayout({
               className="flex items-center gap-2.5 rounded-xl p-1 transition hover:bg-slate-50 sm:pl-3"
             >
               <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-xs font-bold text-white shadow-sm shadow-blue-500/20">
-                {userData?.profile?.avatar_url ? (
+                {userData
+                  ?.profile
+                  ?.avatar_url ? (
                   <Image
-                    src={userData.profile.avatar_url}
+                    src={
+                      userData
+                        .profile
+                        .avatar_url
+                    }
                     alt={`Foto profil ${userData.name}`}
                     fill
                     sizes="36px"
                     unoptimized
                     className="object-cover"
                   />
+                ) : userData?.name ? (
+                  userData.name
+                    .charAt(0)
+                    .toUpperCase()
                 ) : (
-                  userData?.name
-                    ? userData.name
-                        .charAt(0)
-                        .toUpperCase()
-                    : 'U'
+                  'U'
                 )}
               </div>
 
@@ -1436,9 +1543,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        {/* ===================================================
-            SCROLLABLE PAGE CONTENT
-        ==================================================== */}
+        {/* PAGE CONTENT */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto w-full max-w-7xl p-4 sm:p-5 lg:p-6">
             {children}
@@ -1473,8 +1578,7 @@ export default function DashboardLayout({
 
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  Keluar dari
-                  akun?
+                  Keluar dari akun?
                 </h2>
 
                 <p className="mt-1.5 text-sm leading-6 text-slate-500">
