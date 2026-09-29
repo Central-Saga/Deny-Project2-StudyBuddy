@@ -110,7 +110,9 @@ class GroupController extends Controller
                 201
             );
         } catch (\Throwable $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             report($e);
 
@@ -143,8 +145,10 @@ class GroupController extends Controller
 
         $validated = $request->validated();
 
-        // Kapasitas tidak boleh lebih kecil
-        // dari jumlah anggota aktif.
+        /*
+         * Kapasitas tidak boleh lebih kecil
+         * dari jumlah anggota aktif.
+         */
         if (
             array_key_exists(
                 'max_members',
@@ -166,9 +170,15 @@ class GroupController extends Controller
             }
         }
 
-        // Jika nama berubah, slug diperbarui.
+        /*
+         * Jika nama berubah,
+         * slug juga diperbarui.
+         */
         if (
-            array_key_exists('name', $validated) &&
+            array_key_exists(
+                'name',
+                $validated
+            ) &&
             $validated['name'] !== $group->name
         ) {
             $validated['slug'] =
@@ -243,7 +253,8 @@ class GroupController extends Controller
         Request $request,
         StudyGroup $group
     ) {
-        $userId = $request->user()->id;
+        $user = $request->user();
+        $userId = $user->id;
 
         $membership = $group->members()
             ->where('user_id', $userId)
@@ -256,8 +267,13 @@ class GroupController extends Controller
             $membership &&
             $membership->status === 'accepted'
         ) {
+            /*
+             * Creator tidak boleh keluar
+             * dari grupnya sendiri.
+             */
             if (
-                $group->creator_id === $userId
+                (int) $group->creator_id ===
+                (int) $userId
             ) {
                 return response()->json([
                     'message' =>
@@ -299,7 +315,7 @@ class GroupController extends Controller
         }
 
         /*
-         * Cek kapasitas.
+         * Cek kapasitas grup.
          */
         $activeMembers = $group->members()
             ->where('status', 'accepted')
@@ -315,11 +331,22 @@ class GroupController extends Controller
             ], 422);
         }
 
+        /*
+         * Grup private:
+         * status pending.
+         *
+         * Grup public:
+         * langsung accepted.
+         */
         $newStatus = $group->is_private
             ? 'pending'
             : 'accepted';
 
         if ($membership) {
+            /*
+             * User sebelumnya pernah keluar /
+             * ditolak dan sekarang mencoba join lagi.
+             */
             $membership->update([
                 'role' => 'member',
                 'status' => $newStatus,
@@ -328,16 +355,52 @@ class GroupController extends Controller
                         ? now()
                         : null,
             ]);
+
+            $membership->refresh();
         } else {
-            $group->members()->create([
-                'user_id' => $userId,
-                'role' => 'member',
-                'status' => $newStatus,
-                'joined_at' =>
-                    $newStatus === 'accepted'
-                        ? now()
-                        : null,
-            ]);
+            $membership = $group->members()
+                ->create([
+                    'user_id' => $userId,
+                    'role' => 'member',
+                    'status' => $newStatus,
+                    'joined_at' =>
+                        $newStatus === 'accepted'
+                            ? now()
+                            : null,
+                ]);
+        }
+
+        /*
+         * Jika grup private dan request menjadi
+         * pending, kirim notifikasi kepada creator.
+         */
+        if ($newStatus === 'pending') {
+            $requesterName = $user->name;
+
+            $this->insertNotification(
+                (int) $group->creator_id,
+                'Permintaan bergabung baru',
+                "{$requesterName} ingin bergabung ke grup {$group->name}.",
+                [
+                    'group_id' =>
+                        (int) $group->id,
+
+                    'group_name' =>
+                        $group->name,
+
+                    'member_id' =>
+                        (int) $membership->id,
+
+                    'requester_id' =>
+                        (int) $userId,
+
+                    'requester_name' =>
+                        $requesterName,
+
+                    'status' =>
+                        'pending',
+                ]
+            );
         }
 
         return response()->json([
@@ -364,9 +427,13 @@ class GroupController extends Controller
     ) {
         $user = $request->user();
 
+        /*
+         * Pastikan member memang milik
+         * grup yang sedang diproses.
+         */
         if (
-            $member->study_group_id !==
-            $group->id
+            (int) $member->study_group_id !==
+            (int) $group->id
         ) {
             return response()->json([
                 'message' =>
@@ -374,6 +441,10 @@ class GroupController extends Controller
             ], 404);
         }
 
+        /*
+         * Hanya creator / admin aktif
+         * yang dapat approve / reject.
+         */
         if (
             !$this->isGroupAdmin(
                 $group,
@@ -386,6 +457,10 @@ class GroupController extends Controller
             ], 403);
         }
 
+        /*
+         * Hanya request pending
+         * yang boleh diproses.
+         */
         if ($member->status !== 'pending') {
             return response()->json([
                 'message' =>
@@ -396,7 +471,10 @@ class GroupController extends Controller
         $status =
             $request->validated()['status'];
 
-        // Saat approve, cek kapasitas lagi.
+        /*
+         * Saat approve,
+         * cek kapasitas lagi.
+         */
         if ($status === 'accepted') {
             $activeMembers = $group->members()
                 ->where('status', 'accepted')
@@ -415,11 +493,40 @@ class GroupController extends Controller
 
         $member->update([
             'status' => $status,
+
             'joined_at' =>
                 $status === 'accepted'
                     ? now()
                     : null,
         ]);
+
+        /*
+         * Kirim notifikasi kepada user
+         * bahwa permintaan join telah
+         * diterima atau ditolak.
+         */
+        $this->insertNotification(
+            (int) $member->user_id,
+
+            $status === 'accepted'
+                ? 'Permintaan bergabung diterima'
+                : 'Permintaan bergabung ditolak',
+
+            $status === 'accepted'
+                ? "Permintaan bergabung ke grup {$group->name} telah diterima."
+                : "Permintaan bergabung ke grup {$group->name} telah ditolak.",
+
+            [
+                'group_id' =>
+                    (int) $group->id,
+
+                'group_name' =>
+                    $group->name,
+
+                'status' =>
+                    $status,
+            ]
+        );
 
         $member->load([
             'user:id,name',
@@ -439,22 +546,87 @@ class GroupController extends Controller
     }
 
     /**
+     * Membuat notifikasi in-app.
+     *
+     * Kegagalan notifikasi tidak boleh
+     * menggagalkan proses utama grup.
+     */
+    private function insertNotification(
+        int $userId,
+        string $title,
+        string $message,
+        array $extra = []
+    ): void {
+        try {
+            DB::table('notifications')->insert([
+                'id' =>
+                    (string) Str::uuid(),
+
+                'type' =>
+                    'group',
+
+                'notifiable_type' =>
+                    'App\\Models\\User',
+
+                'notifiable_id' =>
+                    $userId,
+
+                'data' => json_encode(
+                    array_merge([
+                        'title' => $title,
+                        'message' => $message,
+                    ], $extra),
+                    JSON_UNESCAPED_UNICODE
+                ),
+
+                'read_at' =>
+                    null,
+
+                'created_at' =>
+                    now(),
+
+                'updated_at' =>
+                    now(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
      * Cek creator / admin aktif.
      */
     private function isGroupAdmin(
         StudyGroup $group,
         int $userId
     ): bool {
+        /*
+         * Creator selalu dianggap admin.
+         */
         if (
-            $group->creator_id === $userId
+            (int) $group->creator_id ===
+            (int) $userId
         ) {
             return true;
         }
 
+        /*
+         * Selain creator, cek member
+         * dengan role admin dan accepted.
+         */
         return $group->members()
-            ->where('user_id', $userId)
-            ->where('role', 'admin')
-            ->where('status', 'accepted')
+            ->where(
+                'user_id',
+                $userId
+            )
+            ->where(
+                'role',
+                'admin'
+            )
+            ->where(
+                'status',
+                'accepted'
+            )
             ->exists();
     }
 
@@ -468,7 +640,8 @@ class GroupController extends Controller
         $baseSlug = Str::slug($name);
 
         if ($baseSlug === '') {
-            $baseSlug = 'study-group';
+            $baseSlug =
+                'study-group';
         }
 
         $slug = $baseSlug;
@@ -485,11 +658,16 @@ class GroupController extends Controller
                             $ignoreGroupId
                         )
                 )
-                ->where('slug', $slug)
+                ->where(
+                    'slug',
+                    $slug
+                )
                 ->exists()
         ) {
             $slug =
-                $baseSlug . '-' . $counter;
+                $baseSlug .
+                '-' .
+                $counter;
 
             $counter++;
         }

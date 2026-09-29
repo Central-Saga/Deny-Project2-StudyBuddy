@@ -9,6 +9,7 @@ use App\Models\StudyGroup;
 use App\Models\StudySession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class StudySessionController extends Controller
 {
@@ -61,9 +62,13 @@ class StudySessionController extends Controller
             $validated['study_group_id']
         );
 
-        if ((int) $group->creator_id !== (int) $user->id) {
+        if (
+            (int) $group->creator_id !==
+            (int) $user->id
+        ) {
             return response()->json([
-                'message' => 'Hanya ketua grup yang dapat membuat sesi belajar.',
+                'message' =>
+                    'Hanya ketua grup yang dapat membuat sesi belajar.',
             ], 403);
         }
 
@@ -75,14 +80,22 @@ class StudySessionController extends Controller
                 'study_group_id' => $group->id,
                 'subject_id' => $group->subject_id,
                 'title' => $validated['title'],
-                'description' => $validated['description'] ?? null,
-                'meeting_link' => $validated['meeting_link'] ?? null,
-                'max_participants' => $validated['max_participants'],
-                'scheduled_at' => $validated['scheduled_at'],
-                'duration_minutes' => $validated['duration_minutes'],
+                'description' =>
+                    $validated['description'] ?? null,
+                'meeting_link' =>
+                    $validated['meeting_link'] ?? null,
+                'max_participants' =>
+                    $validated['max_participants'],
+                'scheduled_at' =>
+                    $validated['scheduled_at'],
+                'duration_minutes' =>
+                    $validated['duration_minutes'],
                 'status' => 'scheduled',
             ]);
 
+            /*
+             * Host otomatis menjadi participant.
+             */
             $session->participants()->create([
                 'user_id' => $user->id,
                 'role' => 'host',
@@ -91,6 +104,38 @@ class StudySessionController extends Controller
             ]);
 
             DB::commit();
+
+            /*
+             * Kirim notifikasi sesi baru kepada
+             * seluruh anggota aktif grup,
+             * kecuali host pembuat sesi.
+             */
+            $memberUserIds = $group->members()
+                ->where('status', 'accepted')
+                ->where(
+                    'user_id',
+                    '!=',
+                    $user->id
+                )
+                ->pluck('user_id');
+
+            foreach ($memberUserIds as $memberUserId) {
+                $this->insertNotification(
+                    (int) $memberUserId,
+                    'Sesi belajar baru',
+                    "Sesi \"{$session->title}\" telah dijadwalkan di grup {$group->name}.",
+                    [
+                        'session_id' =>
+                            (int) $session->id,
+                        'group_id' =>
+                            (int) $group->id,
+                        'group_name' =>
+                            $group->name,
+                        'scheduled_at' =>
+                            $session->scheduled_at,
+                    ]
+                );
+            }
 
             $session->load([
                 'host:id,name',
@@ -101,24 +146,39 @@ class StudySessionController extends Controller
 
             $session->loadCount([
                 'participants as participants_count' => function ($query) {
-                    $query->where('status', 'accepted');
+                    $query->where(
+                        'status',
+                        'accepted'
+                    );
                 },
             ]);
 
-            $session->setAttribute('is_joined', true);
+            $session->setAttribute(
+                'is_joined',
+                true
+            );
 
             return response()->json([
-                'message' => 'Sesi belajar berhasil dibuat.',
-                'data' => (new StudySessionResource($session))
-                    ->resolve($request),
+                'message' =>
+                    'Sesi belajar berhasil dibuat.',
+                'data' =>
+                    (new StudySessionResource($session))
+                        ->resolve($request),
             ], 201);
         } catch (\Throwable $e) {
-            DB::rollBack();
+            /*
+             * Rollback hanya jika transaksi
+             * masih aktif.
+             */
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             report($e);
 
             return response()->json([
-                'message' => 'Gagal membuat sesi belajar.',
+                'message' =>
+                    'Gagal membuat sesi belajar.',
             ], 500);
         }
     }
@@ -141,7 +201,8 @@ class StudySessionController extends Controller
 
         if (!$isMember) {
             return response()->json([
-                'message' => 'Anda tidak memiliki akses ke sesi ini.',
+                'message' =>
+                    'Anda tidak memiliki akses ke sesi ini.',
             ], 403);
         }
 
@@ -154,7 +215,10 @@ class StudySessionController extends Controller
 
         $studySession->loadCount([
             'participants as participants_count' => function ($query) {
-                $query->where('status', 'accepted');
+                $query->where(
+                    'status',
+                    'accepted'
+                );
             },
         ]);
 
@@ -169,9 +233,11 @@ class StudySessionController extends Controller
         );
 
         return response()->json([
-            'message' => 'Detail sesi berhasil diambil.',
-            'data' => (new StudySessionResource($studySession))
-                ->resolve($request),
+            'message' =>
+                'Detail sesi berhasil diambil.',
+            'data' =>
+                (new StudySessionResource($studySession))
+                    ->resolve($request),
         ]);
     }
 
@@ -186,30 +252,41 @@ class StudySessionController extends Controller
             (int) $user->id
         ) {
             return response()->json([
-                'message' => 'Hanya host yang dapat mengubah sesi.',
+                'message' =>
+                    'Hanya host yang dapat mengubah sesi.',
             ], 403);
         }
 
         if ($studySession->status !== 'scheduled') {
             return response()->json([
-                'message' => 'Sesi yang sudah berjalan/selesai tidak dapat diubah.',
+                'message' =>
+                    'Sesi yang sudah berjalan/selesai tidak dapat diubah.',
             ], 422);
         }
 
         $validated = $request->validated();
 
         if (isset($validated['max_participants'])) {
-            $participantCount = $studySession->participants()
+            $participantCount = $studySession
+                ->participants()
                 ->where('status', 'accepted')
                 ->count();
 
-            if ($validated['max_participants'] < $participantCount) {
+            if (
+                $validated['max_participants'] <
+                $participantCount
+            ) {
                 return response()->json([
-                    'message' => 'Kapasitas baru tidak boleh lebih kecil dari jumlah peserta saat ini.',
+                    'message' =>
+                        'Kapasitas baru tidak boleh lebih kecil dari jumlah peserta saat ini.',
                 ], 422);
             }
         }
 
+        /*
+         * Group dan subject sesi tidak boleh
+         * diganti melalui update.
+         */
         unset(
             $validated['study_group_id'],
             $validated['subject_id']
@@ -227,16 +304,24 @@ class StudySessionController extends Controller
 
         $studySession->loadCount([
             'participants as participants_count' => function ($query) {
-                $query->where('status', 'accepted');
+                $query->where(
+                    'status',
+                    'accepted'
+                );
             },
         ]);
 
-        $studySession->setAttribute('is_joined', true);
+        $studySession->setAttribute(
+            'is_joined',
+            true
+        );
 
         return response()->json([
-            'message' => 'Sesi berhasil diperbarui.',
-            'data' => (new StudySessionResource($studySession))
-                ->resolve($request),
+            'message' =>
+                'Sesi berhasil diperbarui.',
+            'data' =>
+                (new StudySessionResource($studySession))
+                    ->resolve($request),
         ]);
     }
 
@@ -251,13 +336,15 @@ class StudySessionController extends Controller
             (int) $user->id
         ) {
             return response()->json([
-                'message' => 'Hanya host yang dapat membatalkan sesi.',
+                'message' =>
+                    'Hanya host yang dapat membatalkan sesi.',
             ], 403);
         }
 
         if ($studySession->status !== 'scheduled') {
             return response()->json([
-                'message' => 'Sesi ini sudah tidak dapat dibatalkan.',
+                'message' =>
+                    'Sesi ini sudah tidak dapat dibatalkan.',
             ], 422);
         }
 
@@ -266,7 +353,44 @@ class StudySessionController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Sesi berhasil dibatalkan.',
+            'message' =>
+                'Sesi berhasil dibatalkan.',
         ]);
+    }
+
+    /**
+     * Membuat notifikasi in-app untuk user.
+     *
+     * Kegagalan membuat notifikasi tidak boleh
+     * menggagalkan proses utama Study Session.
+     */
+    private function insertNotification(
+        int $userId,
+        string $title,
+        string $message,
+        array $extra = []
+    ): void {
+        try {
+            DB::table('notifications')->insert([
+                'id' => (string) Str::uuid(),
+                'type' => 'session',
+                'notifiable_type' =>
+                    'App\\Models\\User',
+                'notifiable_id' =>
+                    $userId,
+                'data' => json_encode(
+                    array_merge([
+                        'title' => $title,
+                        'message' => $message,
+                    ], $extra),
+                    JSON_UNESCAPED_UNICODE
+                ),
+                'read_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }
