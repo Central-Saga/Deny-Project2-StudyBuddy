@@ -15,15 +15,38 @@ class MaterialReport extends Model
         'reporter_id',
         'reason',
         'status',
+        'resolution_note',
+        'reviewed_by',
+        'reviewed_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'reviewed_at' => 'datetime',
+        ];
+    }
 
     public function material(): BelongsTo
     {
-        return $this->belongsTo(Material::class);
+        return $this
+            ->belongsTo(Material::class)
+            ->withTrashed();
     }
 
     public function reporter(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reporter_id');
+        return $this->belongsTo(
+            User::class,
+            'reporter_id'
+        );
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(
+            User::class,
+            'reviewed_by'
+        );
     }
 }

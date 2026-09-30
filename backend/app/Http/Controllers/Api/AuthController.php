@@ -29,7 +29,15 @@ class AuthController extends Controller
             'last_active_at' => now(),
         ]);
 
-        // Buat profil kosong default
+        /*
+         * role dan account_status tidak perlu
+         * diisi di sini karena database sudah
+         * memiliki default:
+         *
+         * role = user
+         * account_status = active
+         */
+
         Profile::create([
             'user_id' => $user->id,
         ]);
@@ -77,6 +85,17 @@ class AuthController extends Controller
         }
 
         /*
+         * Akun yang ditangguhkan tidak
+         * diperbolehkan membuat token baru.
+         */
+        if ($user->isSuspended()) {
+            return response()->json([
+                'message' =>
+                    'Akun Anda sedang ditangguhkan.',
+            ], 403);
+        }
+
+        /*
          * Update aktivitas terakhir.
          * Digunakan sebagai tie-breaker
          * pada pencarian Study Buddy.
@@ -108,10 +127,6 @@ class AuthController extends Controller
     ): JsonResponse {
         $user = $request->user();
 
-        /*
-         * Load seluruh data yang diperlukan
-         * halaman Profile dan Find Buddy.
-         */
         $user->load([
             'profile',
             'userSubjects.subject',
