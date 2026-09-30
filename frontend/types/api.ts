@@ -31,10 +31,16 @@ export type LearningStyle =
   | 'Membaca Mandiri'
   | 'Praktik Soal';
 
+export type UserRole = 'user' | 'admin';
+
+export type AccountStatus = 'active' | 'suspended';
+
 export interface UserDto {
   id: number;
   name: string;
   email: string;
+  role: UserRole;
+  account_status: AccountStatus;
   course?: string | null;
   skills?: string[];
   learning_styles?: LearningStyle[];
@@ -127,7 +133,10 @@ export function isUserDto(value: unknown): value is UserDto {
     isRecord(value) &&
     typeof value.id === 'number' &&
     typeof value.name === 'string' &&
-    typeof value.email === 'string'
+    typeof value.email === 'string' &&
+    (value.role === 'user' || value.role === 'admin') &&
+    (value.account_status === 'active' ||
+      value.account_status === 'suspended')
   );
 }
 

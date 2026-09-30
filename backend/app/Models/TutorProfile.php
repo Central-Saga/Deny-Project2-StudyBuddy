@@ -26,6 +26,7 @@ class TutorProfile extends Model
         'is_verified' => 'boolean',
         'rating_avg' => 'decimal:2',
         'reviews_count' => 'integer',
+        'verified_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
@@ -33,23 +34,39 @@ class TutorProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(
+            User::class,
+            'verified_by'
+        );
+    }
+
     public function subjects(): HasMany
     {
-        return $this->hasMany(TutorSubject::class);
+        return $this->hasMany(
+            TutorSubject::class
+        );
     }
 
     public function availabilities(): HasMany
     {
-        return $this->hasMany(TutorAvailability::class);
+        return $this->hasMany(
+            TutorAvailability::class
+        );
     }
 
     public function tutoringRequests(): HasMany
     {
-        return $this->hasMany(TutoringRequest::class);
+        return $this->hasMany(
+            TutoringRequest::class
+        );
     }
 
     public function reviews(): HasMany
     {
-        return $this->hasMany(TutoringReview::class);
+        return $this->hasMany(
+            TutoringReview::class
+        );
     }
 }

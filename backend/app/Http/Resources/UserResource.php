@@ -19,7 +19,7 @@ class UserResource extends JsonResource
                 : null;
 
         /*
-         * Avatar URL
+         * Avatar URL.
          */
         $avatar =
             $profile?->avatar_url;
@@ -49,10 +49,6 @@ class UserResource extends JsonResource
         /*
          * Subjects hanya diproses jika
          * relasi sudah di-load.
-         *
-         * Ini mencegah query tambahan
-         * ketika UserResource dipakai
-         * pada Group atau Session.
          */
         $subjects = [];
 
@@ -162,6 +158,15 @@ class UserResource extends JsonResource
 
             'email' =>
                 $this->email,
+
+            /*
+             * Hak akses sistem.
+             */
+            'role' =>
+                $this->role,
+
+            'account_status' =>
+                $this->account_status,
 
             /*
              * Field legacy.

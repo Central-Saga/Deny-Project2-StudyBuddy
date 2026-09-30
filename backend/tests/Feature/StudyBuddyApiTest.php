@@ -842,7 +842,7 @@ class StudyBuddyApiTest extends TestCase
                 'Materi berhasil dihapus'
             );
 
-        $this->assertDatabaseMissing('materials', [
+        $this->assertSoftDeleted('materials', [
             'id' => $material->id,
         ]);
 
