@@ -139,8 +139,10 @@ class BuddyController extends Controller
                 },
                 'availabilities:id,user_id,day_of_week,start_time,end_time',
             ])
-            ->where('id', '!=', $currentUser->id);
-
+            ->where('id', '!=', $currentUser->id)
+            ->where('role', User::ROLE_USER)
+            ->where('account_status', User::STATUS_ACTIVE);
+            
         if (!empty($validated['search'])) {
             $search = strtolower(trim($validated['search']));
 

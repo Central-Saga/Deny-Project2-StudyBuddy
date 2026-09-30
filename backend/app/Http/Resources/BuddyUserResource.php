@@ -76,6 +76,8 @@ class BuddyUserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            'role' => $this->role,
+            'account_status' => $this->account_status,
 
             'course' => $this->course,
             'skills' => $this->skills ?? [],
