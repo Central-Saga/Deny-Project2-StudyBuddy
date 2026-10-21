@@ -36,9 +36,20 @@ class MaterialController extends Controller
             $query->where('subject', $request->subject);
         }
 
-        return MaterialResource::collection(
-            $query->paginate(12)
-        );
+        $paginator = $query->paginate(12);
+
+        return MaterialResource::collection($paginator)
+            ->additional([
+                'success' => true,
+                'message' => 'Daftar materi berhasil diambil.',
+                'errors' => null,
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                ],
+            ]);
     }
 
     /**

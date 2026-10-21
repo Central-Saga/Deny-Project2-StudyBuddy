@@ -50,8 +50,13 @@ class StudyGroupAuthorizationTest extends TestCase
 
         $response
             ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Data yang dikirim tidak valid.')
+            ->assertJsonPath('data', null)
             ->assertJsonStructure([
+                'success',
                 'message',
+                'data',
                 'errors' => [
                     'name',
                     'subject_id',
