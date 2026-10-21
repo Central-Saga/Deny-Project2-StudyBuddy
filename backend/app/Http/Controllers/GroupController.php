@@ -11,6 +11,7 @@ use App\Models\GroupMember;
 use App\Models\StudyGroup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class GroupController extends Controller
@@ -31,10 +32,10 @@ class GroupController extends Controller
             ->latest()
             ->get();
 
-        return response()->json(
-            StudyGroupResource::collection($groups)
-                ->resolve($request)
-        );
+        return response()->json([
+            'data' => StudyGroupResource::collection($groups)
+                ->resolve($request),
+        ]);
     }
 
     /**
@@ -52,10 +53,10 @@ class GroupController extends Controller
             'members.user.profile:id,user_id,avatar_url',
         ]);
 
-        return response()->json(
-            (new StudyGroupResource($group))
-                ->resolve($request)
-        );
+        return response()->json([
+            'data' => (new StudyGroupResource($group))
+                ->resolve($request),
+        ]);
     }
 
     /**
@@ -104,11 +105,11 @@ class GroupController extends Controller
                 'members.user.profile:id,user_id,avatar_url',
             ]);
 
-            return response()->json(
-                (new StudyGroupResource($group))
+            return response()->json([
+                'message' => 'Grup berhasil dibuat.',
+                'data' => (new StudyGroupResource($group))
                     ->resolve($request),
-                201
-            );
+            ], 201);
         } catch (\Throwable $e) {
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
@@ -129,20 +130,6 @@ class GroupController extends Controller
         UpdateGroupRequest $request,
         StudyGroup $group
     ) {
-        $user = $request->user();
-
-        if (
-            !$this->isGroupAdmin(
-                $group,
-                $user->id
-            )
-        ) {
-            return response()->json([
-                'message' =>
-                    'Anda tidak memiliki izin untuk mengubah grup ini.',
-            ], 403);
-        }
-
         $validated = $request->validated();
 
         /*
@@ -215,19 +202,7 @@ class GroupController extends Controller
         Request $request,
         StudyGroup $group
     ) {
-        $user = $request->user();
-
-        if (
-            !$this->isGroupAdmin(
-                $group,
-                $user->id
-            )
-        ) {
-            return response()->json([
-                'message' =>
-                    'Anda tidak memiliki izin untuk menghapus grup ini.',
-            ], 403);
-        }
+        Gate::authorize('delete', $group);
 
         try {
             $group->delete();
@@ -425,8 +400,6 @@ class GroupController extends Controller
         StudyGroup $group,
         GroupMember $member
     ) {
-        $user = $request->user();
-
         /*
          * Pastikan member memang milik
          * grup yang sedang diproses.
@@ -443,19 +416,9 @@ class GroupController extends Controller
 
         /*
          * Hanya creator / admin aktif
-         * yang dapat approve / reject.
+         * yang boleh mengelola anggota.
          */
-        if (
-            !$this->isGroupAdmin(
-                $group,
-                $user->id
-            )
-        ) {
-            return response()->json([
-                'message' =>
-                    'Anda tidak memiliki izin untuk mengelola anggota grup.',
-            ], 403);
-        }
+        Gate::authorize('manageMembers', $group);
 
         /*
          * Hanya request pending
@@ -591,43 +554,6 @@ class GroupController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
-    }
-
-    /**
-     * Cek creator / admin aktif.
-     */
-    private function isGroupAdmin(
-        StudyGroup $group,
-        int $userId
-    ): bool {
-        /*
-         * Creator selalu dianggap admin.
-         */
-        if (
-            (int) $group->creator_id ===
-            (int) $userId
-        ) {
-            return true;
-        }
-
-        /*
-         * Selain creator, cek member
-         * dengan role admin dan accepted.
-         */
-        return $group->members()
-            ->where(
-                'user_id',
-                $userId
-            )
-            ->where(
-                'role',
-                'admin'
-            )
-            ->where(
-                'status',
-                'accepted'
-            )
-            ->exists();
     }
 
     /**

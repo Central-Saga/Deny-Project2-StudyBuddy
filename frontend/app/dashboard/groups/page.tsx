@@ -372,7 +372,8 @@ export default function GroupsPage() {
           return null;
         }
 
-        const payload: Group & ApiMessage = await response.json();
+        const payload: ApiMessage & { data?: Group } =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
@@ -380,8 +381,14 @@ export default function GroupsPage() {
           );
         }
 
-        setSelectedGroup(payload);
-        return payload;
+        const group = payload.data;
+
+        if (!group) {
+          throw new Error('Data detail grup tidak ditemukan.');
+        }
+
+        setSelectedGroup(group);
+        return group;
       } catch (error) {
         console.error('Gagal mengambil detail grup:', error);
 

@@ -9,7 +9,10 @@ class UpdateGroupMemberStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can(
+            'manageMembers',
+            $this->route('group')
+        ) ?? false;
     }
 
     public function rules(): array
