@@ -136,17 +136,21 @@ class StudyBuddyApiTest extends TestCase
             ]);
 
         $response
-            ->assertCreated()
-            ->assertJsonPath('name', 'Group Test API')
-            ->assertJsonPath('creator_id', $user->id)
-            ->assertJsonStructure([
+        ->assertCreated()
+        ->assertJsonPath('message', 'Grup berhasil dibuat.')
+        ->assertJsonPath('data.name', 'Group Test API')
+        ->assertJsonPath('data.creator_id', $user->id)
+        ->assertJsonStructure([
+            'message',
+            'data' => [
                 'id',
                 'name',
                 'slug',
                 'creator_id',
                 'subject_id',
                 'members',
-            ]);
+            ],
+        ]);
 
         $this->assertDatabaseHas('study_groups', [
             'name' => 'Group Test API',
