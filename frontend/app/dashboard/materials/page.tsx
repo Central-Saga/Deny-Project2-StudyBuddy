@@ -1,7 +1,5 @@
 'use client';
 
-
-
 import { useCallback, useEffect, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
@@ -95,34 +93,29 @@ interface Material {
   user?: MaterialUser;
 
 }
-
-
-
 interface MaterialsResponse {
-
   data: Material[];
 
-  meta?: {
-
+  pagination?: {
     current_page: number;
-
     last_page: number;
-
     per_page: number;
-
     total: number;
+  };
 
+  meta?: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
   };
 
   current_page?: number;
-
   last_page?: number;
-
   per_page?: number;
-
   total?: number;
-
 }
+
 
 
 
@@ -451,19 +444,19 @@ export default function MaterialsPage() {
 
         }
 
-
-
         if (!response.ok) {
+          const errorBody: {
+            message?: string;
+          } | null = await response.json().catch(() => null);
 
-          throw new Error(
+          const errorMessage =
+            typeof errorBody?.message === 'string' &&
+            errorBody.message.trim() !== ''
+              ? errorBody.message
+              : `Gagal mengambil data materi (${response.status})`;
 
-            `Gagal mengambil data materi (${response.status})`
-
-          );
-
+          throw new Error(errorMessage);
         }
-
-
 
         const result: MaterialsResponse = await response.json();
 
@@ -473,9 +466,7 @@ export default function MaterialsPage() {
 
 
 
-        const pagination = result.meta ?? result;
-
-
+        const pagination = result.pagination ?? result.meta ?? result;
 
         setCurrentPage(pagination.current_page || 1);
 
