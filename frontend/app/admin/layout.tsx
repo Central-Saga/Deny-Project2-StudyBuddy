@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   useEffect,
   useMemo,
@@ -77,6 +79,9 @@ export default function AdminLayout({
   const [authLoading, setAuthLoading] =
     useState(true);
 
+  const [authError, setAuthError] = useState('');
+  const [authRetryKey, setAuthRetryKey] = useState(0);
+
   const [
     mobileSidebarOpen,
     setMobileSidebarOpen,
@@ -101,6 +106,11 @@ export default function AdminLayout({
     let active = true;
 
     const verifyAdmin = async () => {
+      if (active) {
+        setAuthLoading(true);
+        setAuthError('');
+      }
+
       const token = getStoredToken();
 
       if (!token) {
@@ -125,12 +135,14 @@ export default function AdminLayout({
         );
 
         if (!response.ok) {
-          if (
-            response.status === 401 ||
-            response.status === 403
-          ) {
+          if (response.status === 401) {
             clearAuthStorage();
             router.replace('/login');
+            return;
+          }
+
+          if (response.status === 403) {
+            router.replace('/dashboard');
             return;
           }
 
@@ -150,9 +162,7 @@ export default function AdminLayout({
           );
 
         if (!parsedUser) {
-          clearAuthStorage();
-          router.replace('/login');
-          return;
+          throw new Error('Respons akun admin tidak valid.');
         }
 
         if (
@@ -184,14 +194,18 @@ export default function AdminLayout({
           setAuthLoading(false);
         }
       } catch (error) {
-        console.error(
+        console.warn(
           'Gagal memverifikasi admin:',
-          error
+          error instanceof Error ? error.message : 'Koneksi gagal.'
         );
 
         if (active) {
-          clearAuthStorage();
-          router.replace('/login');
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : 'Tidak dapat terhubung ke server.'
+          );
+          setAuthLoading(false);
         }
       }
     };
@@ -201,7 +215,7 @@ export default function AdminLayout({
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, authRetryKey]);
 
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -297,6 +311,35 @@ export default function AdminLayout({
       'Admin Dashboard'
     );
   }, [pathname]);
+
+  if (authError) {
+    return (
+      <main
+        role="alert"
+        className="flex min-h-screen items-center justify-center bg-slate-50 p-6"
+      >
+        <div className="w-full max-w-md rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
+          <ShieldCheck className="mx-auto h-12 w-12 text-red-500" />
+
+          <h1 className="mt-4 text-xl font-bold text-slate-900">
+            Admin belum dapat dimuat
+          </h1>
+
+          <p className="mt-3 text-sm text-slate-500">
+            {authError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setAuthRetryKey((key) => key + 1)}
+            className="mt-6 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   if (authLoading) {
     return (

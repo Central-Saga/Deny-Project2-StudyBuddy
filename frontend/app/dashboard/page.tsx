@@ -2,6 +2,7 @@
 
 
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
 import {
 
   useCallback,
@@ -948,13 +949,22 @@ export default function DashboardPage() {
 
         ) {
 
-          console.error(
+                    const expectedApiError =
+            requestError instanceof Error &&
+            (
+              requestError.message === 'Gagal mengambil data grup belajar.' ||
+              requestError.message === 'Gagal mengambil data sesi belajar.' ||
+              requestError.message.includes('Tidak dapat terhubung ke server')
+            );
 
-            'Dashboard error:',
-
-            requestError
-
-          );
+          if (expectedApiError) {
+            console.warn(
+              'Dashboard API belum tersedia:',
+              requestError.message
+            );
+          } else {
+            console.error('Dashboard error:', requestError);
+          }
 
 
 

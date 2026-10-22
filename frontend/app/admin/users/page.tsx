@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   useCallback,
   useEffect,
@@ -144,6 +146,9 @@ export default function AdminUsersPage() {
   const [error, setError] =
     useState('');
 
+  const [usersLoadError, setUsersLoadError] =
+    useState('');
+
   const [success, setSuccess] =
     useState('');
 
@@ -190,6 +195,7 @@ export default function AdminUsersPage() {
 
       setLoading(true);
       setError('');
+      setUsersLoadError('');
 
       try {
         const params =
@@ -272,17 +278,17 @@ export default function AdminUsersPage() {
           );
         }
 
-        setUsers(
-          Array.isArray(
-            payload?.data
-          )
-            ? payload.data
-            : []
-        );
+        if (!Array.isArray(payload?.data)) {
+          throw new Error(
+            'Respons daftar pengguna dari server tidak valid.'
+          );
+        }
+
+        setUsers(payload.data);
       } catch (
         error: unknown
       ) {
-        setError(
+        setUsersLoadError(
           error instanceof Error
             ? error.message
             : 'Terjadi kesalahan saat mengambil user.'
@@ -546,7 +552,7 @@ export default function AdminUsersPage() {
               </p>
 
               <p className="mt-1 text-2xl font-bold text-slate-900">
-                {summary.total}
+                {loading || usersLoadError ? '—' : summary.total}
               </p>
             </div>
 
@@ -564,7 +570,7 @@ export default function AdminUsersPage() {
               </p>
 
               <p className="mt-1 text-2xl font-bold text-emerald-600">
-                {summary.active}
+                {loading || usersLoadError ? '—' : summary.active}
               </p>
             </div>
 
@@ -582,7 +588,7 @@ export default function AdminUsersPage() {
               </p>
 
               <p className="mt-1 text-2xl font-bold text-red-600">
-                {summary.suspended}
+                {loading || usersLoadError ? '—' : summary.suspended}
               </p>
             </div>
 
@@ -684,6 +690,31 @@ export default function AdminUsersPage() {
                 className="h-16 animate-pulse rounded-xl bg-slate-100"
               />
             ))}
+          </div>
+        ) : usersLoadError ? (
+          <div
+            role="alert"
+            className="flex flex-col items-center justify-center px-6 py-16 text-center"
+          >
+            <AlertTriangle className="h-10 w-10 text-red-500" />
+
+            <h3 className="mt-4 text-base font-bold text-slate-800">
+              Daftar pengguna belum dapat dimuat
+            </h3>
+
+            <p className="mt-2 max-w-md text-sm text-slate-500">
+              {usersLoadError}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void loadUsers()}
+              disabled={loading}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Coba Lagi
+            </button>
           </div>
         ) : users.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">

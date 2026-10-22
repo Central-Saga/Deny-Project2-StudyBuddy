@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   useCallback,
   useEffect,
@@ -234,6 +236,7 @@ export default function AdminReportsPage() {
   const [reports, setReports] = useState<MaterialReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reportsLoadError, setReportsLoadError] = useState('');
   const [success, setSuccess] = useState('');
 
   const [statusFilter, setStatusFilter] =
@@ -291,6 +294,7 @@ export default function AdminReportsPage() {
 
     setLoading(true);
     setError('');
+    setReportsLoadError('');
 
     try {
       const response = await fetch(
@@ -318,11 +322,15 @@ export default function AdminReportsPage() {
         );
       }
 
-      setReports(
-        Array.isArray(payload?.data) ? payload.data : []
-      );
+      if (!Array.isArray(payload?.data)) {
+        throw new Error(
+          'Respons daftar laporan dari server tidak valid.'
+        );
+      }
+
+      setReports(payload.data);
     } catch (caughtError: unknown) {
-      setError(
+      setReportsLoadError(
         caughtError instanceof Error
           ? caughtError.message
           : 'Terjadi kesalahan saat mengambil laporan material.'
@@ -844,6 +852,37 @@ export default function AdminReportsPage() {
 
     setSelectedReport(null);
   };
+
+  if (!loading && reportsLoadError) {
+    return (
+      <div
+        role="alert"
+        className="flex min-h-[420px] items-center justify-center p-6"
+      >
+        <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm">
+          <AlertTriangle className="mx-auto h-12 w-12 text-red-500" />
+
+          <h2 className="mt-4 text-lg font-bold text-slate-900">
+            Daftar laporan belum dapat dimuat
+          </h2>
+
+          <p className="mt-3 text-sm text-slate-500">
+            {reportsLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadReports()}
+            disabled={loading}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">

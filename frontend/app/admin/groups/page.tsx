@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   useCallback,
   useEffect,
@@ -201,6 +203,9 @@ export default function AdminGroupsPage() {
   const [error, setError] =
     useState('');
 
+  const [groupsLoadError, setGroupsLoadError] =
+    useState('');
+
   const [search, setSearch] =
     useState('');
 
@@ -253,6 +258,7 @@ export default function AdminGroupsPage() {
 
       setLoading(true);
       setError('');
+      setGroupsLoadError('');
 
       try {
         const params =
@@ -333,17 +339,17 @@ export default function AdminGroupsPage() {
           );
         }
 
-        setGroups(
-          Array.isArray(
-            payload?.data
-          )
-            ? payload.data
-            : []
-        );
+        if (!Array.isArray(payload?.data)) {
+          throw new Error(
+            'Respons daftar grup dari server tidak valid.'
+          );
+        }
+
+        setGroups(payload.data);
       } catch (
         error: unknown
       ) {
-        setError(
+        setGroupsLoadError(
           error instanceof Error
             ? error.message
             : 'Terjadi kesalahan saat mengambil study group.'
@@ -524,6 +530,37 @@ export default function AdminGroupsPage() {
     setSelectedGroup(null);
     setDetailError('');
   };
+
+  if (!loading && groupsLoadError) {
+    return (
+      <div
+        role="alert"
+        className="flex min-h-[420px] items-center justify-center p-6"
+      >
+        <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm">
+          <AlertTriangle className="mx-auto h-12 w-12 text-red-500" />
+
+          <h2 className="mt-4 text-lg font-bold text-slate-900">
+            Daftar grup belum dapat dimuat
+          </h2>
+
+          <p className="mt-3 text-sm text-slate-500">
+            {groupsLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadGroups()}
+            disabled={loading}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

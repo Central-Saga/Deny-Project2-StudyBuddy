@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   ChangeEvent,
   FormEvent,
@@ -150,6 +152,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [profileLoadError, setProfileLoadError] = useState('');
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
 
   const applyUser = useCallback((user: UserDto) => {
     setFormData(userToForm(user));
@@ -178,6 +182,7 @@ export default function ProfilePage() {
 
     setLoading(true);
     setErrorMsg('');
+    setProfileLoadError('');
 
     try {
       const [profileResponse, subjectResponse] = await Promise.all([
@@ -207,27 +212,52 @@ export default function ProfilePage() {
         throw new Error('Gagal memuat data profil.');
       }
 
-      const profilePayload: MeResponse = await profileResponse.json();
-      if (!profilePayload.user) {
-        throw new Error('Data pengguna tidak ditemukan.');
+      if (!subjectResponse.ok) {
+        throw new Error('Gagal memuat daftar mata kuliah.');
       }
 
+      const profilePayload: MeResponse | null =
+        await profileResponse.json().catch(() => null);
+
+      const subjectPayload: unknown =
+        await subjectResponse.json().catch(() => null);
+
+      if (!profilePayload?.user) {
+        throw new Error('Data pengguna dari server tidak valid.');
+      }
+
+      const subjectList = Array.isArray(subjectPayload)
+        ? subjectPayload
+        : subjectPayload &&
+            typeof subjectPayload === 'object' &&
+            'data' in subjectPayload &&
+            Array.isArray(subjectPayload.data)
+          ? subjectPayload.data
+          : null;
+
+      if (!subjectList) {
+        throw new Error('Data mata kuliah dari server tidak valid.');
+      }
+
+      setSubjects(subjectList);
       applyUser(profilePayload.user);
-      localStorage.setItem('user_data', JSON.stringify(profilePayload.user));
+
+      localStorage.setItem(
+        'user_data',
+        JSON.stringify(profilePayload.user)
+      );
+
       window.dispatchEvent(new Event('user-data-updated'));
 
-      if (subjectResponse.ok) {
-        const payload = await subjectResponse.json();
-        const list = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : [];
-        setSubjects(list);
-      }
+      setHasLoadedProfile(true);
+      setProfileLoadError('');
     } catch (error) {
-      console.error('Gagal memuat profil:', error);
-      setErrorMsg(
+      console.warn(
+        'Profile API:',
+        error instanceof Error ? error.message : 'Koneksi gagal.'
+      );
+
+      setProfileLoadError(
         error instanceof Error
           ? error.message
           : 'Terjadi kesalahan saat memuat profil.'
@@ -384,7 +414,7 @@ export default function ProfilePage() {
         }),
       });
 
-      const profilePayload: UpdateProfileResponse = await profileResponse.json();
+      const profilePayload: UpdateProfileResponse = await profileResponse.json().catch(() => ({}));
 
       if (profileResponse.status === 401) {
         clearAuthStorage();
@@ -413,7 +443,7 @@ export default function ProfilePage() {
           body: avatarData,
         });
 
-        const avatarPayload: UpdateProfileResponse = await avatarResponse.json();
+        const avatarPayload: UpdateProfileResponse = await avatarResponse.json().catch(() => ({}));
 
         if (avatarResponse.status === 401) {
           clearAuthStorage();
@@ -482,8 +512,49 @@ export default function ProfilePage() {
     );
   }
 
+  if (profileLoadError && !hasLoadedProfile) {
+    return (
+      <div
+        role="alert"
+        className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm"
+      >
+        <AlertCircle className="h-11 w-11 text-red-500" />
+
+        <h2 className="mt-4 text-lg font-bold text-slate-800">
+          Data profil belum dapat dimuat
+        </h2>
+
+        <p className="mt-2 max-w-md text-sm text-slate-500">
+          {profileLoadError}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => void fetchProfile()}
+          className="mt-5 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full space-y-6">
+      {profileLoadError && hasLoadedProfile && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+        >
+          <p className="font-semibold">
+            Gagal memperbarui data profil dari server.
+          </p>
+          <p className="mt-1">
+            Data pada formulir tetap dipertahankan.
+          </p>
+        </div>
+      )}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-bold text-slate-800">Pengaturan Profil</h1>
         <p className="mt-1 text-xs leading-5 text-slate-500">

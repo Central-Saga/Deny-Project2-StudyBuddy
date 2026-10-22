@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as sharedApiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import {
   Bell,
@@ -59,7 +61,7 @@ async function apiFetch(
 ) {
   const token = getToken();
 
-  return fetch(`${API_URL}${path}`, {
+  return sharedApiFetch(`${API_URL}${path}`, {
     ...init,
 
     headers: {
@@ -104,6 +106,12 @@ export default function NotificationsPage() {
   const [error, setError] =
     useState('');
 
+  const [notificationsLoadError, setNotificationsLoadError] =
+    useState('');
+
+  const [hasLoadedNotifications, setHasLoadedNotifications] =
+    useState(false);
+
   const [
     markingAllRead,
     setMarkingAllRead,
@@ -117,6 +125,7 @@ export default function NotificationsPage() {
   async function loadNotifications() {
     setLoading(true);
     setError('');
+    setNotificationsLoadError('');
 
     try {
       const response =
@@ -128,23 +137,23 @@ export default function NotificationsPage() {
         );
       }
 
-      const payload: NotificationResponse =
-        await response.json();
+      const payload: NotificationResponse | null =
+        await response.json().catch(() => null);
 
       if (!response.ok) {
         throw new Error(
-          payload?.message ||
-            'Gagal mengambil notifikasi.'
+          response.status >= 500
+            ? 'Server Study Buddy sedang bermasalah. Silakan coba lagi.'
+            : payload?.message || 'Gagal mengambil notifikasi.'
         );
       }
 
-      setItems(
-        Array.isArray(
-          payload.notifications
-        )
-          ? payload.notifications
-          : []
-      );
+      if (!payload || !Array.isArray(payload.notifications)) {
+        throw new Error('Respons notifikasi dari server tidak valid.');
+      }
+
+      setItems(payload.notifications);
+      setHasLoadedNotifications(true);
 
       setUnread(
         Number(
@@ -152,7 +161,7 @@ export default function NotificationsPage() {
         )
       );
     } catch (err) {
-      setError(
+      setNotificationsLoadError(
         err instanceof Error
           ? err.message
           : 'Gagal memuat notifikasi.'
@@ -387,11 +396,58 @@ export default function NotificationsPage() {
       {/* =====================================================
           CONTENT
       ====================================================== */}
+      {notificationsLoadError && hasLoadedNotifications && !loading && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+        >
+          <p className="font-semibold">
+            Gagal memperbarui notifikasi.
+          </p>
+
+          <p className="mt-1">
+            Data sebelumnya masih ditampilkan.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadNotifications()}
+            className="mt-3 font-semibold underline"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex min-h-[260px] items-center justify-center text-sm text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-amber-500" />
 
           Memuat notifikasi...
+        </div>
+      ) : notificationsLoadError && !hasLoadedNotifications ? (
+        <div
+          role="alert"
+          className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm"
+        >
+          <Bell className="mx-auto h-10 w-10 text-red-500" />
+
+          <h2 className="mt-4 text-base font-bold text-slate-800">
+            Notifikasi belum dapat dimuat
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            {notificationsLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadNotifications()}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Coba Lagi
+          </button>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">

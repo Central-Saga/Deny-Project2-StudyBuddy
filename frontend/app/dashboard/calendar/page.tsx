@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
@@ -64,7 +66,7 @@ interface SessionForm {
 }
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+  process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 ).replace(/\/$/, '');
 
 const TOKEN_KEY = 'meetspace_auth_token';
@@ -149,6 +151,7 @@ export default function CalendarPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<SessionForm>(emptyForm);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -220,18 +223,23 @@ export default function CalendarPage() {
         throw new Error('Gagal mengambil data sesi belajar.');
       }
 
+      if (!groupResponse.ok) {
+        throw new Error('Gagal mengambil data grup belajar.');
+      }
+
       if (!meResponse.ok) {
         throw new Error('Gagal mengambil data pengguna.');
       }
 
       const [sessionPayload, groupPayload, mePayload] = await Promise.all([
         sessionResponse.json(),
-        groupResponse.ok ? groupResponse.json() : Promise.resolve([]),
+        groupResponse.json(),
         meResponse.json(),
       ]);
 
       setSessions(getPayload<StudySession>(sessionPayload));
       setGroups(getPayload<StudyGroup>(groupPayload));
+      setHasLoadedData(true);
 
       const meUser = mePayload?.user ?? mePayload?.data ?? mePayload;
       setCurrentUserId(
@@ -465,7 +473,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-slate-500">{label}</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{hasLoadedData ? value : "\u2014"}</p>
               </div>
 
               <div
@@ -512,7 +520,31 @@ export default function CalendarPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="mb-5 flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Agenda Dipilih</p><h2 className="mt-1 text-lg font-bold text-slate-900">{formatIndonesianDate(selectedDate)}</h2></div>{creatorGroups.length > 0 && <button type="button" onClick={openCreateModal} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white hover:bg-slate-800" title="Buat sesi belajar"><Plus className="h-4 w-4" /></button>}</div>
 
-          {selectedSessions.length === 0 ? <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm"><CalendarDays className="h-6 w-6" /></div><h3 className="mt-4 text-sm font-bold text-slate-700">Belum ada sesi</h3><p className="mt-1 max-w-xs text-xs leading-5 text-slate-400">{creatorGroups.length > 0 ? 'Tanggal ini belum memiliki sesi belajar.' : 'Belum ada sesi dari grup yang Anda ikuti pada tanggal ini.'}</p>{creatorGroups.length > 0 && <button type="button" onClick={openCreateModal} className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Buat Sesi Belajar</button>}</div> : <div className="space-y-3">
+          {!hasLoadedData ? (
+              <div
+                role="status"
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center"
+              >
+                <CalendarDays className="mx-auto h-8 w-8 text-slate-400" />
+
+                <p className="mt-3 text-sm font-semibold text-slate-700">
+                  {loading
+                    ? 'Memuat sesi belajar...'
+                    : 'Sesi belajar belum dapat dimuat'}
+                </p>
+
+                {!loading && (
+                  <button
+                    type="button"
+                    onClick={() => void fetchData()}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Coba Lagi
+                  </button>
+                )}
+              </div>
+            ) : selectedSessions.length === 0 ? <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm"><CalendarDays className="h-6 w-6" /></div><h3 className="mt-4 text-sm font-bold text-slate-700">Belum ada sesi</h3><p className="mt-1 max-w-xs text-xs leading-5 text-slate-400">{creatorGroups.length > 0 ? 'Tanggal ini belum memiliki sesi belajar.' : 'Belum ada sesi dari grup yang Anda ikuti pada tanggal ini.'}</p>{creatorGroups.length > 0 && <button type="button" onClick={openCreateModal} className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Buat Sesi Belajar</button>}</div> : <div className="space-y-3">
             {selectedSessions.map((session) => {
               const isHost = currentUserId === session.host_id;
               const isJoined = Boolean(session.is_joined || isHost);
@@ -638,7 +670,16 @@ export default function CalendarPage() {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-5"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-600">Upcoming</p><h2 className="mt-1 text-lg font-bold text-slate-900">Sesi Belajar Mendatang</h2><p className="mt-1 text-xs text-slate-400">Data diambil langsung dari database.</p></div>
-        {upcomingSessions.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><CalendarDays className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600">Belum ada sesi mendatang.</p></div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {!hasLoadedData ? (
+          <div
+            role="status"
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500"
+          >
+            {loading
+              ? 'Memuat sesi mendatang...'
+              : 'Sesi mendatang belum dapat ditampilkan karena data gagal dimuat.'}
+          </div>
+        ) : upcomingSessions.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><CalendarDays className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600">Belum ada sesi mendatang.</p></div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {upcomingSessions.map((session) => <button type="button" key={session.id} onClick={() => { setSelectedDate(session.date); const [year, month] = session.date.split('-').map(Number); setCursorDate(new Date(year, month - 1, 1)); }} className="group rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="rounded-xl bg-blue-50 px-3 py-2 text-center"><p className="text-[9px] font-bold text-blue-600">{session.date.slice(8, 10)}</p><p className="text-[9px] font-semibold uppercase text-slate-500">{session.date.slice(5, 7)}</p></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold capitalize text-emerald-700">{session.status}</span></div><h3 className="mt-4 line-clamp-2 text-sm font-bold text-slate-900 group-hover:text-blue-700">{session.title}</h3><p className="mt-1 truncate text-[11px] text-slate-400">{session.study_group?.name || 'Grup belajar'}</p><div className="mt-4 flex items-center gap-4 text-[10px] font-medium text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5 text-blue-500" />{session.time}</span><span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5 text-emerald-500" />{session.participants_count || 0}/{session.max_participants}</span></div></button>)}
         </div>}
       </section>

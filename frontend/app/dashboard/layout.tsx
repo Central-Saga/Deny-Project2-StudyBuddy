@@ -582,13 +582,19 @@ export default function DashboardLayout({
 
         } catch (error) {
 
-          console.error(
+                    const expectedAuthError =
+            error instanceof TypeError ||
+            (error instanceof Error &&
+              error.message === 'Gagal memverifikasi sesi pengguna.');
 
-            'Gagal memverifikasi sesi:',
-
-            error
-
-          );
+          if (expectedAuthError) {
+            console.warn(
+              'Verifikasi sesi tertunda:',
+              error instanceof Error ? error.message : 'Koneksi gagal.'
+            );
+          } else {
+            console.error('Gagal memverifikasi sesi:', error);
+          }
 
         } finally {
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
@@ -201,6 +203,7 @@ export default function FindBuddyPage() {
   const [actionBuddyId, setActionBuddyId] = useState<number | null>(null);
 
   const [errorMsg, setErrorMsg] = useState('');
+  const [buddyLoadError, setBuddyLoadError] = useState('');
 
   const [matchingMode, setMatchingMode] = useState<MatchingMode>('none');
 
@@ -275,6 +278,7 @@ export default function FindBuddyPage() {
     }
 
     setLoading(true);
+    setBuddyLoadError('');
 
     setErrorMsg('');
 
@@ -342,13 +346,21 @@ export default function FindBuddyPage() {
 
       }
 
-      const payload = await response.json();
-
       if (!response.ok) {
+  const errorPayload = await response.json().catch(() => null);
 
-        throw new Error(getErrorMessage(payload, 'Gagal mengambil data buddy.'));
+  throw new Error(
+    response.status >= 500
+      ? 'Server Study Buddy sedang bermasalah. Silakan coba lagi.'
+      : getErrorMessage(errorPayload, 'Gagal mengambil data buddy.')
+  );
+}
 
-      }
+const payload = await response.json().catch(() => null);
+
+if (!payload || typeof payload !== 'object') {
+  throw new Error('Respons API Buddy tidak valid.');
+}
 
       // Laravel Resource pagination mengembalikan { data: [...] }, bukan array langsung.
 
@@ -358,7 +370,19 @@ export default function FindBuddyPage() {
 
     } catch (error) {
 
-      console.error('Gagal mengambil data buddy:', error);
+      const expectedApiError =
+        error instanceof Error &&
+        (
+          error.message === 'Server Study Buddy sedang bermasalah. Silakan coba lagi.' ||
+          error.message === 'Gagal mengambil data buddy.' ||
+          error.message.includes('Tidak dapat terhubung ke server')
+        );
+
+      if (expectedApiError) {
+        console.warn('Buddy API:', error.message);
+      } else {
+        console.error('Gagal mengambil data buddy:', error);
+      }
 
       setErrorMsg(
 
@@ -370,7 +394,7 @@ export default function FindBuddyPage() {
 
       );
 
-      setBuddies([]);
+      setBuddyLoadError(error instanceof Error ? error.message : 'Gagal terhubung ke server backend.');
 
     } finally {
 
@@ -1022,7 +1046,7 @@ export default function FindBuddyPage() {
 
       </form>
 
-      {errorMsg && (
+      {errorMsg && (!buddyLoadError || buddies.length > 0) && (
 
         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-700">
 
@@ -1044,6 +1068,30 @@ export default function FindBuddyPage() {
 
         </div>
 
+      ) : buddyLoadError && buddies.length === 0 ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-red-200 bg-white px-6 py-12 text-center shadow-sm"
+        >
+          <AlertCircle className="mx-auto h-10 w-10 text-red-500" />
+
+          <h3 className="mt-4 text-base font-bold text-slate-800">
+            Daftar Study Buddy belum dapat dimuat
+          </h3>
+
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            {buddyLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void fetchBuddies()}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <Search className="h-4 w-4" />
+            Coba Lagi
+          </button>
+        </div>
       ) : buddies.length > 0 ? (
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">

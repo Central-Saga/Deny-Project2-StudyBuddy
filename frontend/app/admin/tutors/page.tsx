@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import {
   useCallback,
   useEffect,
@@ -197,6 +199,9 @@ export default function AdminTutorsPage() {
     useState(true);
   const [error, setError] =
     useState('');
+
+  const [tutorsLoadError, setTutorsLoadError] =
+    useState('');
   const [success, setSuccess] =
     useState('');
   const [searchQuery, setSearchQuery] =
@@ -259,6 +264,7 @@ export default function AdminTutorsPage() {
 
       setLoading(true);
       setError('');
+      setTutorsLoadError('');
 
       try {
         const response = await fetch(
@@ -288,13 +294,15 @@ export default function AdminTutorsPage() {
           );
         }
 
-        setTutors(
-          Array.isArray(payload?.data)
-            ? payload.data
-            : []
-        );
+        if (!Array.isArray(payload?.data)) {
+          throw new Error(
+            'Respons daftar tutor dari server tidak valid.'
+          );
+        }
+
+        setTutors(payload.data);
       } catch (caughtError: unknown) {
-        setError(
+        setTutorsLoadError(
           caughtError instanceof Error
             ? caughtError.message
             : 'Terjadi kesalahan saat mengambil daftar tutor.'
@@ -520,6 +528,37 @@ export default function AdminTutorsPage() {
       setVerificationLoading(false);
     }
   };
+
+  if (!loading && tutorsLoadError) {
+    return (
+      <div
+        role="alert"
+        className="flex min-h-[420px] items-center justify-center p-6"
+      >
+        <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm">
+          <AlertTriangle className="mx-auto h-12 w-12 text-red-500" />
+
+          <h2 className="mt-4 text-lg font-bold text-slate-900">
+            Daftar tutor belum dapat dimuat
+          </h2>
+
+          <p className="mt-3 text-sm text-slate-500">
+            {tutorsLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadTutors()}
+            disabled={loading}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">

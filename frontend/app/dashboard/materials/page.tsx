@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as fetch } from '@/lib/api-fetch';
+
 import { useCallback, useEffect, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
@@ -128,6 +130,7 @@ export default function MaterialsPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [hasLoadedMaterials, setHasLoadedMaterials] = useState(false);
 
   const [uploading, setUploading] = useState(false);
 
@@ -167,6 +170,7 @@ export default function MaterialsPage() {
 
 
   const [error, setError] = useState('');
+  const [materialsLoadError, setMaterialsLoadError] = useState('');
 
   const [success, setSuccess] = useState('');
 
@@ -463,6 +467,8 @@ export default function MaterialsPage() {
 
 
         setMaterials(Array.isArray(result.data) ? result.data : []);
+        setMaterialsLoadError('');
+        setHasLoadedMaterials(true);
 
 
 
@@ -476,7 +482,16 @@ export default function MaterialsPage() {
 
       } catch (err) {
 
-        console.error('Gagal mengambil materi:', err);
+        console.warn(
+          'Gagal memuat daftar materi:',
+          err instanceof Error ? err.message : 'Koneksi gagal.'
+        );
+
+        setMaterialsLoadError(
+          err instanceof Error
+            ? err.message
+            : 'Gagal mengambil data materi.'
+        );
 
 
 
@@ -1436,7 +1451,7 @@ export default function MaterialsPage() {
 
       {/* ================= ERROR ================= */}
 
-      {error && (
+      {error && (!materialsLoadError || materials.length > 0) && (
 
         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 
@@ -1504,7 +1519,7 @@ export default function MaterialsPage() {
 
               <p className="mt-2 text-2xl font-bold text-slate-900">
 
-                {totalMaterials}
+                {hasLoadedMaterials ? totalMaterials : '—'}
 
               </p>
 
@@ -1548,7 +1563,7 @@ export default function MaterialsPage() {
 
               <p className="mt-2 text-2xl font-bold text-slate-900">
 
-                {materials.length}
+                {hasLoadedMaterials ? materials.length : '—'}
 
               </p>
 
@@ -1592,7 +1607,7 @@ export default function MaterialsPage() {
 
               <p className="mt-2 text-2xl font-bold text-slate-900">
 
-                {currentPage}
+                {hasLoadedMaterials ? currentPage : '—'}
 
               </p>
 
@@ -1612,7 +1627,7 @@ export default function MaterialsPage() {
 
           <p className="mt-3 text-[11px] text-slate-400">
 
-            Dari {lastPage} halaman
+            Dari {hasLoadedMaterials ? lastPage : '—'} halaman
 
           </p>
 
@@ -1762,7 +1777,7 @@ export default function MaterialsPage() {
 
           <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-500">
 
-            {materials.length} ditampilkan
+            {hasLoadedMaterials ? materials.length : '—'} ditampilkan
 
           </span>
 
@@ -1798,6 +1813,29 @@ export default function MaterialsPage() {
 
           </div>
 
+        ) : materialsLoadError && materials.length === 0 ? (
+          <div
+            role="alert"
+            className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-red-200 bg-white px-6 text-center"
+          >
+            <AlertCircle className="h-10 w-10 text-red-500" />
+
+            <h3 className="mt-4 text-base font-bold text-slate-800">
+              Daftar materi belum dapat dimuat
+            </h3>
+
+            <p className="mt-2 max-w-md text-sm text-slate-500">
+              {materialsLoadError}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void fetchMaterials(currentPage)}
+              className="mt-5 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Coba Lagi
+            </button>
+          </div>
         ) : materials.length === 0 ? (
 
           <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
@@ -2202,7 +2240,7 @@ export default function MaterialsPage() {
 
                   <span className="font-semibold text-slate-700">
 
-                    {currentPage}
+                    {hasLoadedMaterials ? currentPage : '—'}
 
                   </span>{' '}
 
