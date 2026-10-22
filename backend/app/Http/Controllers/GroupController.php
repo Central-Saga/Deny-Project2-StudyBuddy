@@ -71,56 +71,53 @@ class GroupController extends Controller
             $validated['name']
         );
 
-        DB::beginTransaction();
-
         try {
-            $group = StudyGroup::create([
-                'creator_id' => $user->id,
-                'subject_id' => $validated['subject_id'],
-                'name' => $validated['name'],
-                'slug' => $slug,
-                'description' =>
-                    $validated['description'] ?? null,
-                'max_members' =>
-                    $validated['max_members'],
-                'is_private' =>
-                    $validated['is_private'] ?? false,
-            ]);
+            $group = DB::transaction(function () use (
+                $validated,
+                $user,
+                $slug
+            ) {
+                $group = StudyGroup::create([
+                    'creator_id' => $user->id,
+                    'subject_id' => $validated['subject_id'],
+                    'name' => $validated['name'],
+                    'slug' => $slug,
+                    'description' => $validated['description'] ?? null,
+                    'max_members' => $validated['max_members'],
+                    'is_private' => $validated['is_private'] ?? false,
+                ]);
 
-            // Creator otomatis menjadi admin.
-            $group->members()->create([
-                'user_id' => $user->id,
-                'role' => 'admin',
-                'status' => 'accepted',
-                'joined_at' => now(),
-            ]);
+                // Creator otomatis menjadi admin.
+                $group->members()->create([
+                    'user_id' => $user->id,
+                    'role' => 'admin',
+                    'status' => 'accepted',
+                    'joined_at' => now(),
+                ]);
 
-            DB::commit();
-
-            $group->load([
-                'creator:id,name',
-                'creator.profile:id,user_id,avatar_url',
-                'subject:id,code,name',
-                'members.user:id,name',
-                'members.user.profile:id,user_id,avatar_url',
-            ]);
-
-            return response()->json([
-                'message' => 'Grup berhasil dibuat.',
-                'data' => (new StudyGroupResource($group))
-                    ->resolve($request),
-            ], 201);
+                return $group;
+            });
         } catch (\Throwable $e) {
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-
             report($e);
 
             return response()->json([
                 'message' => 'Gagal membuat grup.',
             ], 500);
         }
+
+        $group->load([
+            'creator:id,name',
+            'creator.profile:id,user_id,avatar_url',
+            'subject:id,code,name',
+            'members.user:id,name',
+            'members.user.profile:id,user_id,avatar_url',
+        ]);
+
+        return response()->json([
+            'message' => 'Grup berhasil dibuat.',
+            'data' => (new StudyGroupResource($group))
+                ->resolve($request),
+        ], 201);
     }
 
     /**

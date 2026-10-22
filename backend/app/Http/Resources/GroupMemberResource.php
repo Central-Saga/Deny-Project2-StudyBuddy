@@ -10,7 +10,15 @@ class GroupMemberResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $avatar = $this->user?->profile?->avatar_url;
+        $user = $this->relationLoaded('user')
+            ? $this->user
+            : null;
+
+        $profile = $user && $user->relationLoaded('profile')
+            ? $user->profile
+            : null;
+
+        $avatar = $profile?->avatar_url;
 
         $avatarUrl = null;
 
