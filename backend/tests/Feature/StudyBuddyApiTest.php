@@ -165,6 +165,49 @@ class StudyBuddyApiTest extends TestCase
         ]);
     }
 
+    public function test_group_creation_rolls_back_when_membership_fails(): void
+    {
+        $user = User::factory()->create();
+        $subject = $this->createSubject();
+
+        $groupName = 'Transaction Rollback Group';
+
+        // Simulasikan kegagalan saat membuat anggota admin.
+        \App\Models\GroupMember::creating(function () {
+            throw new \RuntimeException(
+                'Simulated group membership failure'
+            );
+        });
+
+        $response = $this
+            ->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/groups', [
+                'name' => $groupName,
+                'subject_id' => $subject->id,
+                'description' => 'Rollback transaction test.',
+                'max_members' => 10,
+                'is_private' => false,
+            ]);
+
+        $response
+            ->assertStatus(500)
+            ->assertJsonPath(
+                'message',
+                'Gagal membuat grup.'
+            );
+
+        // Grup tidak boleh tersimpan sebagian.
+        $this->assertDatabaseMissing('study_groups', [
+            'name' => $groupName,
+            'creator_id' => $user->id,
+        ]);
+
+        $this->assertDatabaseMissing('group_members', [
+            'user_id' => $user->id,
+            'role' => 'admin',
+        ]);
+    }
+
     public function test_user_can_join_public_group(): void
     {
         $owner = User::factory()->create();
@@ -253,6 +296,51 @@ class StudyBuddyApiTest extends TestCase
             'host_id' => $creator->id,
             'title' => 'Test Study Session',
             'status' => 'scheduled',
+        ]);
+    }
+
+    public function test_study_session_creation_rolls_back_when_participant_fails(): void
+    {
+        $creator = User::factory()->create();
+        $group = $this->createGroup($creator);
+
+        $sessionTitle = 'Transaction Rollback Session';
+
+        // Simulasikan kegagalan saat membuat participant host.
+        \App\Models\SessionParticipant::creating(function () {
+            throw new \RuntimeException(
+                'Simulated session participant failure'
+            );
+        });
+
+        $response = $this
+            ->actingAs($creator, 'sanctum')
+            ->postJson('/api/v1/study-sessions', [
+                'study_group_id' => $group->id,
+                'title' => $sessionTitle,
+                'description' => 'Rollback transaction test.',
+                'meeting_link' => 'https://meet.google.com/rollback-test',
+                'max_participants' => 10,
+                'scheduled_at' => '2030-01-15 19:00:00',
+                'duration_minutes' => 60,
+            ]);
+
+        $response
+            ->assertStatus(500)
+            ->assertJsonPath(
+                'message',
+                'Gagal membuat sesi belajar.'
+            );
+
+        // Study Session tidak boleh tersimpan sebagian.
+        $this->assertDatabaseMissing('study_sessions', [
+            'study_group_id' => $group->id,
+            'title' => $sessionTitle,
+        ]);
+
+        $this->assertDatabaseMissing('session_participants', [
+            'user_id' => $creator->id,
+            'role' => 'host',
         ]);
     }
 

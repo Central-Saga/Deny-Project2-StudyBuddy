@@ -72,44 +72,55 @@ class StudySessionController extends Controller
             ], 403);
         }
 
-        DB::beginTransaction();
-
         try {
-            $session = StudySession::create([
-                'host_id' => $user->id,
-                'study_group_id' => $group->id,
-                'subject_id' => $group->subject_id,
-                'title' => $validated['title'],
-                'description' =>
-                    $validated['description'] ?? null,
-                'meeting_link' =>
-                    $validated['meeting_link'] ?? null,
-                'max_participants' =>
-                    $validated['max_participants'],
-                'scheduled_at' =>
-                    $validated['scheduled_at'],
-                'duration_minutes' =>
-                    $validated['duration_minutes'],
-                'status' => 'scheduled',
-            ]);
+            $session = DB::transaction(function () use (
+                $validated,
+                $user,
+                $group
+            ) {
+                $session = StudySession::create([
+                    'host_id' => $user->id,
+                    'study_group_id' => $group->id,
+                    'subject_id' => $group->subject_id,
+                    'title' => $validated['title'],
+                    'description' =>
+                        $validated['description'] ?? null,
+                    'meeting_link' =>
+                        $validated['meeting_link'] ?? null,
+                    'max_participants' =>
+                        $validated['max_participants'],
+                    'scheduled_at' =>
+                        $validated['scheduled_at'],
+                    'duration_minutes' =>
+                        $validated['duration_minutes'],
+                    'status' => 'scheduled',
+                ]);
 
-            /*
-             * Host otomatis menjadi participant.
-             */
-            $session->participants()->create([
-                'user_id' => $user->id,
-                'role' => 'host',
-                'status' => 'accepted',
-                'joined_at' => now(),
-            ]);
+                // Host otomatis menjadi participant.
+                $session->participants()->create([
+                    'user_id' => $user->id,
+                    'role' => 'host',
+                    'status' => 'accepted',
+                    'joined_at' => now(),
+                ]);
 
-            DB::commit();
+                return $session;
+            });
+        } catch (\Throwable $e) {
+            report($e);
 
-            /*
-             * Kirim notifikasi sesi baru kepada
-             * seluruh anggota aktif grup,
-             * kecuali host pembuat sesi.
-             */
+            return response()->json([
+                'message' =>
+                    'Gagal membuat sesi belajar.',
+            ], 500);
+        }
+
+        /*
+         * Notifikasi bersifat best-effort.
+         * Kegagalan notifikasi tidak boleh
+         * membatalkan sesi yang sudah dibuat.
+         */
+        try {
             $memberUserIds = $group->members()
                 ->where('status', 'accepted')
                 ->where(
@@ -136,51 +147,39 @@ class StudySessionController extends Controller
                     ]
                 );
             }
-
-            $session->load([
-                'host:id,name',
-                'subject:id,name',
-                'studyGroup:id,name,slug',
-                'participants.user:id,name',
-            ]);
-
-            $session->loadCount([
-                'participants as participants_count' => function ($query) {
-                    $query->where(
-                        'status',
-                        'accepted'
-                    );
-                },
-            ]);
-
-            $session->setAttribute(
-                'is_joined',
-                true
-            );
-
-            return response()->json([
-                'message' =>
-                    'Sesi belajar berhasil dibuat.',
-                'data' =>
-                    (new StudySessionResource($session))
-                        ->resolve($request),
-            ], 201);
         } catch (\Throwable $e) {
-            /*
-             * Rollback hanya jika transaksi
-             * masih aktif.
-             */
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-
             report($e);
-
-            return response()->json([
-                'message' =>
-                    'Gagal membuat sesi belajar.',
-            ], 500);
         }
+
+        // Muat relasi setelah transaksi berhasil.
+        $session->load([
+            'host:id,name',
+            'subject:id,name',
+            'studyGroup:id,name,slug',
+            'participants.user:id,name',
+        ]);
+
+        $session->loadCount([
+            'participants as participants_count' => function ($query) {
+                $query->where(
+                    'status',
+                    'accepted'
+                );
+            },
+        ]);
+
+        $session->setAttribute(
+            'is_joined',
+            true
+        );
+
+        return response()->json([
+            'message' =>
+                'Sesi belajar berhasil dibuat.',
+            'data' =>
+                (new StudySessionResource($session))
+                    ->resolve($request),
+        ], 201);
     }
 
     public function show(
