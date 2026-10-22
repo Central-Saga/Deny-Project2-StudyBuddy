@@ -9,3 +9,9 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+.DS_Store
+*Zone.Identifier*
+dist
+build
+coverage
+.runtime-secrets

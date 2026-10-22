@@ -27,7 +27,7 @@ WORKDIR /var/www
 
 COPY . .
 
-RUN composer install --no-interaction --optimize-autoloader || true
+RUN composer install --no-interaction --optimize-autoloader
 
 EXPOSE 8000
 
