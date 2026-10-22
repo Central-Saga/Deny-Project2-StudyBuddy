@@ -6,3 +6,8 @@ node_modules
 !.env.example
 coverage
 out
+.DS_Store
+*Zone.Identifier*
+dist
+build
+*.tsbuildinfo
