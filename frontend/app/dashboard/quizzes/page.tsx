@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch as sharedApiFetch } from '@/lib/api-fetch';
+
 import { FormEvent, useEffect, useState } from 'react';
 import {
   AlertTriangle,
@@ -88,7 +90,7 @@ interface QuizReviewItem {
   points_awarded: number;
 }
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '');
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/$/, '');
 const TOKEN_KEYS = ['access_token', 'meetspace_auth_token'];
 
 function getToken() {
@@ -105,7 +107,7 @@ function getToken() {
 async function apiFetch(path: string, init: RequestInit = {}) {
   const token = getToken();
 
-  return fetch(`${API_URL}${path}`, {
+  return sharedApiFetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       Accept: 'application/json',
@@ -146,6 +148,7 @@ export default function QuizzesPage() {
   const [subjects, setSubjects] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [quizListError, setQuizListError] = useState('');
   const [quizStatus, setQuizStatus] = useState<'active' | 'inactive'>('active');
 
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -177,6 +180,7 @@ export default function QuizzesPage() {
   async function loadData(status: 'active' | 'inactive' = quizStatus) {
     setLoading(true);
     setError('');
+    setQuizListError('');
 
     try {
       const [quizResponse, subjectResponse] = await Promise.all([
@@ -184,7 +188,7 @@ export default function QuizzesPage() {
         apiFetch('/subjects'),
       ]);
 
-      if (quizResponse.status === 401) {
+      if (quizResponse.status === 401 || subjectResponse.status === 401) {
         throw new Error('Sesi login berakhir. Silakan login kembali.');
       }
 
@@ -192,13 +196,33 @@ export default function QuizzesPage() {
         throw new Error('Gagal mengambil data kuis.');
       }
 
-      const quizPayload = await quizResponse.json();
-      const subjectPayload = subjectResponse.ok ? await subjectResponse.json() : [];
+      if (!subjectResponse.ok) {
+        throw new Error('Gagal mengambil data mata kuliah.');
+      }
 
-      setQuizzes(Array.isArray(quizPayload) ? quizPayload : quizPayload?.data || []);
-      setSubjects(Array.isArray(subjectPayload) ? subjectPayload : subjectPayload?.data || []);
+      const quizPayload = await quizResponse.json().catch(() => null);
+      const subjectPayload = await subjectResponse.json().catch(() => null);
+
+      const quizItems = Array.isArray(quizPayload)
+        ? quizPayload
+        : quizPayload?.data;
+
+      const subjectItems = Array.isArray(subjectPayload)
+        ? subjectPayload
+        : subjectPayload?.data;
+
+      if (!Array.isArray(quizItems) || !Array.isArray(subjectItems)) {
+        throw new Error('Respons daftar kuis dari server tidak valid.');
+      }
+
+      setQuizzes(quizItems);
+      setSubjects(subjectItems);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat kuis.');
+      setQuizListError(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memuat kuis.'
+      );
     } finally {
       setLoading(false);
     }
@@ -652,6 +676,29 @@ export default function QuizzesPage() {
         <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />
           Memuat kuis...
+        </div>
+      ) : quizListError ? (
+        <div
+          role="alert"
+          className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm"
+        >
+          <AlertTriangle className="mx-auto h-10 w-10 text-red-500" />
+
+          <h2 className="mt-4 text-base font-bold text-slate-800">
+            Daftar kuis belum dapat dimuat
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            {quizListError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadData(quizStatus)}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Coba Lagi
+          </button>
         </div>
       ) : quizzes.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">

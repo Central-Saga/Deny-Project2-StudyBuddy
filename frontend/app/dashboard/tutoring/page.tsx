@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch as sharedApiFetch } from "@/lib/api-fetch";
+
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -128,8 +130,8 @@ interface TutorFilters {
   time: string;
 }
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/$/, "");
-const TOKEN_KEYS = ["meetspace_auth_token", "access_token"];
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(/\/$/, "");
+const TOKEN_KEYS = ["access_token", "meetspace_auth_token"];
 
 const DAYS = [
   "Minggu",
@@ -155,7 +157,7 @@ function getToken() {
 async function apiFetch(path: string, init: RequestInit = {}) {
   const token = getToken();
 
-  return fetch(`${API_URL}${path}`, {
+  return sharedApiFetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
@@ -242,6 +244,8 @@ export default function TutoringPage() {
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
+  const [mainLoadError, setMainLoadError] = useState("");
+  const [hasLoadedMainData, setHasLoadedMainData] = useState(false);
   const [success, setSuccess] = useState("");
 
   const [subjectFilter, setSubjectFilter] = useState("");
@@ -339,7 +343,15 @@ export default function TutoringPage() {
         throw new Error(payload?.message || "Gagal memuat daftar tutor.");
       }
 
-      setTutors(Array.isArray(payload) ? payload : payload?.data || []);
+      const tutorItems = Array.isArray(payload)
+        ? payload
+        : payload?.data;
+
+      if (!Array.isArray(tutorItems)) {
+        throw new Error("Respons daftar tutor tidak valid.");
+      }
+
+      setTutors(tutorItems);
     } finally {
       setSearchLoading(false);
     }
@@ -348,6 +360,7 @@ export default function TutoringPage() {
   async function loadMainData() {
     setLoading(true);
     setError("");
+    setMainLoadError("");
 
     try {
       const [subjectsResponse, requestResponse, profileResponse] =
@@ -421,9 +434,12 @@ export default function TutoringPage() {
       }
 
       await loadTutors(currentFilters());
+      setHasLoadedMainData(true);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Gagal memuat peer tutoring."
+      setMainLoadError(
+        err instanceof Error
+          ? err.message
+          : "Gagal memuat peer tutoring."
       );
     } finally {
       setLoading(false);
@@ -941,10 +957,54 @@ export default function TutoringPage() {
         </div>
       )}
 
+      {mainLoadError && hasLoadedMainData && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+        >
+          <p className="font-semibold">
+            Gagal memperbarui data tutoring.
+          </p>
+          <p className="mt-1">
+            Data sebelumnya masih ditampilkan.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadMainData()}
+            className="mt-3 font-semibold underline"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex min-h-[260px] items-center justify-center text-sm text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-emerald-600" />
           Memuat peer tutoring...
+        </div>
+      ) : mainLoadError && !hasLoadedMainData ? (
+        <div
+          role="alert"
+          className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm"
+        >
+          <CircleOff className="mx-auto h-10 w-10 text-red-500" />
+
+          <h2 className="mt-4 text-base font-bold text-slate-800">
+            Data Peer Tutoring belum dapat dimuat
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            {mainLoadError}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void loadMainData()}
+            className="mt-5 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            Coba Lagi
+          </button>
         </div>
       ) : (
         <>

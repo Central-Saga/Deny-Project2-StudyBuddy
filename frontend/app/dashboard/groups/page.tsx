@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch as fetch } from '@/lib/api-fetch';
 
 import {
   FormEvent,
@@ -183,6 +184,7 @@ export default function GroupsPage() {
   const router = useRouter();
 
   const [groups, setGroups] = useState<Group[]>([]);
+  const [hasLoadedGroups, setHasLoadedGroups] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
@@ -322,8 +324,25 @@ export default function GroupsPage() {
         setGroups(nextGroups);
         setSubjects(nextSubjects);
         setCurrentUserId(mePayload.user?.id ?? null);
+        setHasLoadedGroups(true);
       } catch (error) {
-        console.error('Gagal memuat grup:', error);
+        const expectedApiError =
+          error instanceof Error &&
+          (
+            error.message === 'Gagal mengambil data grup.' ||
+            error.message === 'Gagal mengambil data mata kuliah.' ||
+            error.message === 'Gagal mengambil data pengguna.' ||
+            error.message.includes('Tidak dapat terhubung ke server')
+          );
+
+        if (expectedApiError) {
+          console.warn(
+            'Groups API belum tersedia:',
+            error.message
+          );
+        } else {
+          console.error('Gagal memuat grup:', error);
+        }
 
         setErrorMsg(
           error instanceof Error
@@ -980,7 +999,7 @@ export default function GroupsPage() {
         </div>
       </section>
 
-      {errorMsg && (
+      {errorMsg && hasLoadedGroups && (
         <div className="flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -1009,6 +1028,8 @@ export default function GroupsPage() {
         </div>
       )}
 
+      {hasLoadedGroups && (
+        <>
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Total Grup"
@@ -1058,6 +1079,8 @@ export default function GroupsPage() {
           </div>
         </div>
       </section>
+        </>
+      )}
 
       {loading ? (
         <section className="flex min-h-[360px] items-center justify-center rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -1072,6 +1095,30 @@ export default function GroupsPage() {
               Mengambil data terbaru dari database.
             </p>
           </div>
+        </section>
+      ) : !hasLoadedGroups ? (
+        <section
+          role="alert"
+          className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm"
+        >
+          <AlertCircle className="mx-auto h-10 w-10 text-red-500" />
+
+          <h3 className="mt-4 text-lg font-bold text-slate-800">
+            Daftar grup belum dapat dimuat
+          </h3>
+
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            {errorMsg || 'Koneksi ke server belum tersedia.'}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void fetchGroups()}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Coba Lagi
+          </button>
         </section>
       ) : filteredGroups.length === 0 ? (
         <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
