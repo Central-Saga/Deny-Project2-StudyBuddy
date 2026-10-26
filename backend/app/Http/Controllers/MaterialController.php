@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesMaterialExceptions;
 use App\Http\Requests\StoreMaterialRequest;
 use App\Http\Requests\UpdateMaterialRequest;
 use App\Http\Resources\MaterialResource;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 
 class MaterialController extends Controller
 {
+    use HandlesMaterialExceptions;
+
     public function __construct(private readonly MaterialService $service)
     {
     }

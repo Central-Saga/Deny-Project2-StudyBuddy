@@ -15,7 +15,7 @@ class MaterialException extends RuntimeException
         parent::__construct($message);
     }
 
-    public function render(): JsonResponse
+    public function toResponse(): JsonResponse
     {
         $body = ['message' => $this->getMessage()];
 

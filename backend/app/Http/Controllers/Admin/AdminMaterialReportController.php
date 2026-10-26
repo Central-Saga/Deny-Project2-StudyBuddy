@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\HandlesMaterialExceptions;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MaterialReportResource;
 use App\Models\MaterialReport;
@@ -12,6 +13,8 @@ use Illuminate\Validation\Rule;
 
 class AdminMaterialReportController extends Controller
 {
+    use HandlesMaterialExceptions;
+
     public function __construct(
         private readonly AdminMaterialReportService $service
     ) {
