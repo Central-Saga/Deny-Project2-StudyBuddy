@@ -17,6 +17,7 @@ use App\Models\TutoringRequest;
 use App\Models\TutoringReview;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Data demo lengkap lewat factory. Idempoten: dilewati bila
@@ -70,8 +71,20 @@ class DemoDataSeeder extends Seeder
             'user_id' => $siti->id,
         ]);
 
-        // Materi dan laporan
-        $material = Material::factory()->create(['user_id' => $budi->id]);
+        // Materi dan laporan (file placeholder nyata agar bisa diunduh)
+        $filePath = 'materials/demo-materi.pdf';
+        $pdf = "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            . "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            . "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n"
+            . "trailer<</Root 1 0 R>>\n%%EOF\n";
+        Storage::disk('public')->put($filePath, $pdf);
+
+        $material = Material::factory()->create([
+            'user_id' => $budi->id,
+            'file_path' => $filePath,
+            'file_type' => 'pdf',
+            'file_size' => strlen($pdf),
+        ]);
         MaterialReport::factory()->create([
             'material_id' => $material->id,
             'reporter_id' => $siti->id,

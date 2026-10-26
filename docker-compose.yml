@@ -31,6 +31,14 @@ services:
       - ADMIN_NAME=${ADMIN_NAME}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - CACHE_STORE=${CACHE_STORE:-failover}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-failover}
+      - CACHE_PREFIX=${CACHE_PREFIX:-studybuddy-cache-}
+      - CACHE_TTL=${CACHE_TTL:-300}
+      - REDIS_CLIENT=${REDIS_CLIENT:-phpredis}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-null}
 
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/up > /dev/null"]
@@ -42,6 +50,55 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  queue:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: studybuddy_queue
+    restart: always
+    command: ["php", "artisan", "queue:work", "--tries=3", "--backoff=5", "--sleep=3"]
+    volumes:
+      - ./backend:/var/www
+      - /var/www/vendor
+      - app_secrets:/var/www/.runtime-secrets
+    environment:
+      - APP_NAME=${APP_NAME}
+      - APP_ENV=${APP_ENV}
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=${APP_DEBUG}
+      - DB_CONNECTION=${DB_CONNECTION}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - CACHE_STORE=${CACHE_STORE:-failover}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-failover}
+      - CACHE_PREFIX=${CACHE_PREFIX:-studybuddy-cache-}
+      - REDIS_CLIENT=${REDIS_CLIENT:-phpredis}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-null}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: studybuddy_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   frontend:
     build:
@@ -94,4 +151,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   app_secrets:
