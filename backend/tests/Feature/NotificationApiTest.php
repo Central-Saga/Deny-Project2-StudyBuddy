@@ -16,48 +16,18 @@ class NotificationApiTest extends TestCase
 
     private function createSubject(): Subject
     {
-        return Subject::create([
-            'code' =>
-                'NOTIF' .
-                fake()->unique()->numberBetween(100, 999),
-
-            'name' =>
-                'Notification Subject ' .
-                fake()->unique()->numberBetween(100, 999),
-
-            'slug' =>
-                'notification-subject-' .
-                fake()->unique()->numberBetween(100, 999),
-        ]);
+        return Subject::factory()->create();
     }
 
-    private function createGroup(
-        User $owner,
-        bool $private = false
-    ): StudyGroup {
-        $subject = $this->createSubject();
+    private function createGroup(User $owner, bool $private = false): StudyGroup
+    {
+        $factory = StudyGroup::factory()
+            ->withCreatorAsAdmin()
+            ->for($owner, 'creator');
 
-        $group = StudyGroup::create([
-            'creator_id' => $owner->id,
-            'subject_id' => $subject->id,
+        return ($private ? $factory->private() : $factory)->create([
             'name' => 'Notification Test Group',
-            'slug' =>
-                'notification-test-group-' .
-                fake()->unique()->numberBetween(1000, 9999),
-            'description' =>
-                'Group untuk pengujian notifikasi.',
-            'max_members' => 10,
-            'is_private' => $private,
         ]);
-
-        $group->members()->create([
-            'user_id' => $owner->id,
-            'role' => 'admin',
-            'status' => 'accepted',
-            'joined_at' => now(),
-        ]);
-
-        return $group;
     }
 
     private function createNotification(

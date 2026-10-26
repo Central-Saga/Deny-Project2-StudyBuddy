@@ -14,30 +14,15 @@ class StudyGroupAuthorizationTest extends TestCase
 
     private function createGroup(User $creator): StudyGroup
     {
-        $subject = Subject::create([
-            'code' => 'ISS43',
-            'name' => 'Issue 43 Subject',
-            'slug' => 'issue-43-subject',
-        ]);
+        $factory = StudyGroup::factory()
+            ->withCreatorAsAdmin()
+            ->for($creator, 'creator');
 
-        $group = StudyGroup::create([
-            'creator_id' => $creator->id,
-            'subject_id' => $subject->id,
+        return $factory->create([
             'name' => 'Original Study Group',
             'slug' => 'issue-43-group',
             'description' => 'Group untuk pengujian otorisasi.',
-            'max_members' => 10,
-            'is_private' => false,
         ]);
-
-        $group->members()->create([
-            'user_id' => $creator->id,
-            'role' => 'admin',
-            'status' => 'accepted',
-            'joined_at' => now(),
-        ]);
-
-        return $group;
     }
 
     public function test_invalid_group_input_returns_422(): void

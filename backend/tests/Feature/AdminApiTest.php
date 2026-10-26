@@ -15,121 +15,49 @@ class AdminApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    /**
-     * Membuat administrator sistem.
-     */
     private function createAdmin(): User
     {
-        $admin = User::factory()->create([
+        return User::factory()->admin()->create([
             'name' => 'System Admin',
             'email' => 'admin-test@example.com',
         ]);
-
-        $admin->role = User::ROLE_ADMIN;
-        $admin->account_status = User::STATUS_ACTIVE;
-        $admin->save();
-
-        return $admin->refresh();
     }
 
-    /**
-     * Membuat user biasa.
-     */
     private function createUser(
         string $name = 'Regular User',
         string $email = 'regular@example.com'
     ): User {
-        $user = User::factory()->create([
+        return User::factory()->create([
             'name' => $name,
             'email' => $email,
         ]);
-
-        $user->role = User::ROLE_USER;
-        $user->account_status = User::STATUS_ACTIVE;
-        $user->save();
-
-        return $user->refresh();
     }
 
-    /**
-     * Membuat subject untuk kebutuhan group.
-     */
     private function createSubject(): Subject
     {
-        return Subject::create([
-            'code' =>
-                'ADMIN' .
-                fake()->unique()->numberBetween(100, 999),
-
-            'name' =>
-                'Admin Test Subject ' .
-                fake()->unique()->numberBetween(100, 999),
-
-            'slug' =>
-                'admin-test-subject-' .
-                fake()->unique()->numberBetween(100, 999),
-        ]);
+        return Subject::factory()->create();
     }
 
-    /**
-     * Membuat study group.
-     */
     private function createGroup(
         User $owner,
         bool $private = false
     ): StudyGroup {
-        $subject = $this->createSubject();
+        $factory = StudyGroup::factory()
+            ->withCreatorAsAdmin()
+            ->for($owner, 'creator');
 
-        $group = StudyGroup::create([
-            'creator_id' => $owner->id,
-            'subject_id' => $subject->id,
-            'name' => 'Admin Test Group',
-            'slug' =>
-                'admin-test-group-' .
-                fake()->unique()->numberBetween(1000, 9999),
-            'description' =>
-                'Group untuk pengujian admin.',
-            'max_members' => 10,
-            'is_private' => $private,
-        ]);
-
-        $group->members()->create([
-            'user_id' => $owner->id,
-            'role' => 'admin',
-            'status' => 'accepted',
-            'joined_at' => now(),
-        ]);
-
-        return $group;
+        return ($private ? $factory->private() : $factory)->create();
     }
 
-    /**
-     * Membuat laporan material pending.
-     */
     private function createMaterialReport(
         User $owner,
         User $reporter
     ): MaterialReport {
-        $material = Material::create([
-            'user_id' => $owner->id,
-            'title' => 'Admin Test Material',
-            'description' =>
-                'Material untuk pengujian moderasi admin.',
-            'subject' => 'Pemrograman Web',
-            'file_path' => 'materials/admin-test.pdf',
-            'file_type' => 'application/pdf',
-            'file_size' => 1024,
-        ]);
-
-        return MaterialReport::create([
-            'material_id' => $material->id,
-            'reporter_id' => $reporter->id,
-            'reason' =>
-                'Material ini dilaporkan untuk kebutuhan test.',
-            'status' => 'pending',
-        ]);
+        return MaterialReport::factory()
+            ->for(Material::factory()->for($owner, 'user'))
+            ->for($reporter, 'reporter')
+            ->create(['status' => 'pending']);
     }
-
     public function test_guest_cannot_access_admin_dashboard(): void
     {
         $response = $this->getJson(
