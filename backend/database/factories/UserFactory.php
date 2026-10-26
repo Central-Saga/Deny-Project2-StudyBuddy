@@ -42,4 +42,27 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    public function admin(): static
+    {
+        return $this->state(fn () => ['role' => User::ROLE_ADMIN]);
+    }
+
+    public function suspended(): static
+    {
+        return $this->state(fn () => [
+            'account_status' => User::STATUS_SUSPENDED,
+        ]);
+    }
+
+    public function withProfile(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            $user->profile()->firstOrCreate([], [
+                'bio' => fake()->sentence(),
+                'university' => fake()->company(),
+                'major' => fake()->jobTitle(),
+            ]);
+        });
+    }
 }

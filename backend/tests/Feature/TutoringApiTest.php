@@ -14,11 +14,7 @@ class TutoringApiTest extends TestCase
 
     private function createSubject(): Subject
     {
-        return Subject::create([
-            'code' => 'TUT' . fake()->unique()->numberBetween(100, 999),
-            'name' => 'Tutoring Subject ' . fake()->unique()->numberBetween(100, 999),
-            'slug' => 'tutoring-subject-' . fake()->unique()->numberBetween(100, 999),
-        ]);
+        return Subject::factory()->create();
     }
 
     private function createTutor(

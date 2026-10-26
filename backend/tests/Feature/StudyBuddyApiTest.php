@@ -22,35 +22,16 @@ class StudyBuddyApiTest extends TestCase
 
     private function createSubject(): Subject
     {
-        return Subject::create([
-            'code' => 'TEST' . fake()->unique()->numberBetween(100, 999),
-            'name' => 'Test Subject ' . fake()->unique()->numberBetween(100, 999),
-            'slug' => 'test-subject-' . fake()->unique()->numberBetween(100, 999),
-        ]);
+        return Subject::factory()->create();
     }
 
     private function createGroup(User $user): StudyGroup
     {
-        $subject = $this->createSubject();
+        $factory = StudyGroup::factory()
+            ->withCreatorAsAdmin()
+            ->for($user, 'creator');
 
-        $group = StudyGroup::create([
-            'creator_id' => $user->id,
-            'subject_id' => $subject->id,
-            'name' => 'Test Study Group',
-            'slug' => 'test-study-group-' . fake()->unique()->numberBetween(1000, 9999),
-            'description' => 'Group untuk automated test.',
-            'max_members' => 10,
-            'is_private' => false,
-        ]);
-
-        $group->members()->create([
-            'user_id' => $user->id,
-            'role' => 'admin',
-            'status' => 'accepted',
-            'joined_at' => now(),
-        ]);
-
-        return $group;
+        return ($factory)->create();
     }
 
     private function createStudySession(
