@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesDomainExceptions;
 use App\Http\Requests\StoreGroupRequest;
 use App\Http\Requests\UpdateGroupMemberStatusRequest;
 use App\Http\Requests\UpdateGroupRequest;
@@ -9,31 +10,25 @@ use App\Http\Resources\GroupMemberResource;
 use App\Http\Resources\StudyGroupResource;
 use App\Models\GroupMember;
 use App\Models\StudyGroup;
+use App\Services\GroupService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Str;
 
 class GroupController extends Controller
 {
+    use HandlesDomainExceptions;
+
+    public function __construct(
+        private readonly GroupService $service
+    ) {}
+
     /**
      * Menampilkan semua grup.
      */
     public function index(Request $request)
     {
-        $groups = StudyGroup::query()
-            ->with([
-                'creator:id,name',
-                'creator.profile:id,user_id,avatar_url',
-                'subject:id,code,name',
-                'members.user:id,name',
-                'members.user.profile:id,user_id,avatar_url',
-            ])
-            ->latest()
-            ->get();
-
         return response()->json([
-            'data' => StudyGroupResource::collection($groups)
+            'data' => StudyGroupResource::collection($this->service->list())
                 ->resolve($request),
         ]);
     }
@@ -41,20 +36,10 @@ class GroupController extends Controller
     /**
      * Menampilkan detail grup.
      */
-    public function show(
-        Request $request,
-        StudyGroup $group
-    ) {
-        $group->load([
-            'creator:id,name',
-            'creator.profile:id,user_id,avatar_url',
-            'subject:id,code,name',
-            'members.user:id,name',
-            'members.user.profile:id,user_id,avatar_url',
-        ]);
-
+    public function show(Request $request, StudyGroup $group)
+    {
         return response()->json([
-            'data' => (new StudyGroupResource($group))
+            'data' => (new StudyGroupResource($this->service->detail($group)))
                 ->resolve($request),
         ]);
     }
@@ -64,332 +49,55 @@ class GroupController extends Controller
      */
     public function store(StoreGroupRequest $request)
     {
-        $validated = $request->validated();
-        $user = $request->user();
-
-        $slug = $this->generateUniqueSlug(
-            $validated['name']
-        );
-
-        try {
-            $group = DB::transaction(function () use (
-                $validated,
-                $user,
-                $slug
-            ) {
-                $group = StudyGroup::create([
-                    'creator_id' => $user->id,
-                    'subject_id' => $validated['subject_id'],
-                    'name' => $validated['name'],
-                    'slug' => $slug,
-                    'description' => $validated['description'] ?? null,
-                    'max_members' => $validated['max_members'],
-                    'is_private' => $validated['is_private'] ?? false,
-                ]);
-
-                // Creator otomatis menjadi admin.
-                $group->members()->create([
-                    'user_id' => $user->id,
-                    'role' => 'admin',
-                    'status' => 'accepted',
-                    'joined_at' => now(),
-                ]);
-
-                return $group;
-            });
-        } catch (\Throwable $e) {
-            report($e);
+        return $this->handle(function () use ($request) {
+            $group = $this->service->create($request->validated(), $request->user());
 
             return response()->json([
-                'message' => 'Gagal membuat grup.',
-            ], 500);
-        }
-
-        $group->load([
-            'creator:id,name',
-            'creator.profile:id,user_id,avatar_url',
-            'subject:id,code,name',
-            'members.user:id,name',
-            'members.user.profile:id,user_id,avatar_url',
-        ]);
-
-        return response()->json([
-            'message' => 'Grup berhasil dibuat.',
-            'data' => (new StudyGroupResource($group))
-                ->resolve($request),
-        ], 201);
+                'message' => 'Grup berhasil dibuat.',
+                'data' => (new StudyGroupResource($group))->resolve($request),
+            ], 201);
+        });
     }
 
     /**
      * Memperbarui grup.
      */
-    public function update(
-        UpdateGroupRequest $request,
-        StudyGroup $group
-    ) {
-        $validated = $request->validated();
+    public function update(UpdateGroupRequest $request, StudyGroup $group)
+    {
+        return $this->handle(function () use ($request, $group) {
+            $group = $this->service->update($group, $request->validated());
 
-        /*
-         * Kapasitas tidak boleh lebih kecil
-         * dari jumlah anggota aktif.
-         */
-        if (
-            array_key_exists(
-                'max_members',
-                $validated
-            )
-        ) {
-            $activeMembers = $group->members()
-                ->where('status', 'accepted')
-                ->count();
-
-            if (
-                $validated['max_members'] <
-                $activeMembers
-            ) {
-                return response()->json([
-                    'message' =>
-                        "Kapasitas minimal saat ini adalah {$activeMembers} anggota.",
-                ], 422);
-            }
-        }
-
-        /*
-         * Jika nama berubah,
-         * slug juga diperbarui.
-         */
-        if (
-            array_key_exists(
-                'name',
-                $validated
-            ) &&
-            $validated['name'] !== $group->name
-        ) {
-            $validated['slug'] =
-                $this->generateUniqueSlug(
-                    $validated['name'],
-                    $group->id
-                );
-        }
-
-        $group->update($validated);
-
-        $group->load([
-            'creator:id,name',
-            'creator.profile:id,user_id,avatar_url',
-            'subject:id,code,name',
-            'members.user:id,name',
-            'members.user.profile:id,user_id,avatar_url',
-        ]);
-
-        return response()->json([
-            'message' =>
-                'Grup berhasil diperbarui.',
-
-            'data' =>
-                (new StudyGroupResource($group))
-                    ->resolve($request),
-        ]);
+            return response()->json([
+                'message' => 'Grup berhasil diperbarui.',
+                'data' => (new StudyGroupResource($group))->resolve($request),
+            ]);
+        });
     }
 
     /**
      * Menghapus grup.
      */
-    public function destroy(
-        Request $request,
-        StudyGroup $group
-    ) {
+    public function destroy(Request $request, StudyGroup $group)
+    {
         Gate::authorize('delete', $group);
 
-        try {
-            DB::transaction(function () use ($group) {
-                $group->sessions()->get()->each->delete();
-                $group->delete();
-            });
+        return $this->handle(function () use ($group) {
+            $this->service->delete($group);
 
             return response()->json([
-                'message' =>
-                    'Grup berhasil dihapus.',
+                'message' => 'Grup berhasil dihapus.',
             ]);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return response()->json([
-                'message' =>
-                    'Gagal menghapus grup.',
-            ], 500);
-        }
+        });
     }
 
     /**
      * Join / keluar / batalkan permintaan.
      */
-    public function joinToggle(
-        Request $request,
-        StudyGroup $group
-    ) {
-        $user = $request->user();
-        $userId = $user->id;
-
-        $membership = $group->members()
-            ->where('user_id', $userId)
-            ->first();
-
-        /*
-         * Sudah menjadi anggota aktif.
-         */
-        if (
-            $membership &&
-            $membership->status === 'accepted'
-        ) {
-            /*
-             * Creator tidak boleh keluar
-             * dari grupnya sendiri.
-             */
-            if (
-                (int) $group->creator_id ===
-                (int) $userId
-            ) {
-                return response()->json([
-                    'message' =>
-                        'Creator grup tidak dapat keluar dari grup. Transfer pengelolaan grup terlebih dahulu.',
-                ], 422);
-            }
-
-            $membership->update([
-                'status' => 'rejected',
-                'joined_at' => null,
-            ]);
-
-            return response()->json([
-                'message' =>
-                    'Berhasil keluar dari grup.',
-                'joined' => false,
-                'status' => 'rejected',
-            ]);
-        }
-
-        /*
-         * Batalkan permintaan pending.
-         */
-        if (
-            $membership &&
-            $membership->status === 'pending'
-        ) {
-            $membership->update([
-                'status' => 'rejected',
-                'joined_at' => null,
-            ]);
-
-            return response()->json([
-                'message' =>
-                    'Permintaan bergabung berhasil dibatalkan.',
-                'joined' => false,
-                'status' => 'rejected',
-            ]);
-        }
-
-        /*
-         * Cek kapasitas grup.
-         */
-        $activeMembers = $group->members()
-            ->where('status', 'accepted')
-            ->count();
-
-        if (
-            $activeMembers >=
-            $group->max_members
-        ) {
-            return response()->json([
-                'message' =>
-                    'Grup sudah penuh.',
-            ], 422);
-        }
-
-        /*
-         * Grup private:
-         * status pending.
-         *
-         * Grup public:
-         * langsung accepted.
-         */
-        $newStatus = $group->is_private
-            ? 'pending'
-            : 'accepted';
-
-        if ($membership) {
-            /*
-             * User sebelumnya pernah keluar /
-             * ditolak dan sekarang mencoba join lagi.
-             */
-            $membership->update([
-                'role' => 'member',
-                'status' => $newStatus,
-                'joined_at' =>
-                    $newStatus === 'accepted'
-                        ? now()
-                        : null,
-            ]);
-
-            $membership->refresh();
-        } else {
-            $membership = $group->members()
-                ->create([
-                    'user_id' => $userId,
-                    'role' => 'member',
-                    'status' => $newStatus,
-                    'joined_at' =>
-                        $newStatus === 'accepted'
-                            ? now()
-                            : null,
-                ]);
-        }
-
-        /*
-         * Jika grup private dan request menjadi
-         * pending, kirim notifikasi kepada creator.
-         */
-        if ($newStatus === 'pending') {
-            $requesterName = $user->name;
-
-            $this->insertNotification(
-                (int) $group->creator_id,
-                'Permintaan bergabung baru',
-                "{$requesterName} ingin bergabung ke grup {$group->name}.",
-                [
-                    'group_id' =>
-                        (int) $group->id,
-
-                    'group_name' =>
-                        $group->name,
-
-                    'member_id' =>
-                        (int) $membership->id,
-
-                    'requester_id' =>
-                        (int) $userId,
-
-                    'requester_name' =>
-                        $requesterName,
-
-                    'status' =>
-                        'pending',
-                ]
-            );
-        }
-
-        return response()->json([
-            'message' =>
-                $group->is_private
-                    ? 'Permintaan bergabung berhasil dikirim.'
-                    : 'Berhasil bergabung ke grup.',
-
-            'joined' =>
-                $newStatus === 'accepted',
-
-            'status' =>
-                $newStatus,
-        ]);
+    public function joinToggle(Request $request, StudyGroup $group)
+    {
+        return $this->handle(fn () => response()->json(
+            $this->service->toggleMembership($group, $request->user())
+        ));
     }
 
     /**
@@ -400,204 +108,23 @@ class GroupController extends Controller
         StudyGroup $group,
         GroupMember $member
     ) {
-        /*
-         * Pastikan member memang milik
-         * grup yang sedang diproses.
-         */
-        if (
-            (int) $member->study_group_id !==
-            (int) $group->id
-        ) {
+        return $this->handle(function () use ($request, $group, $member) {
+            $this->service->assertMemberBelongsToGroup($group, $member);
+
+            Gate::authorize('manageMembers', $group);
+
+            $member = $this->service->updateMemberStatus(
+                $group,
+                $member,
+                $request->validated()['status']
+            );
+
             return response()->json([
-                'message' =>
-                    'Data anggota tidak ditemukan pada grup ini.',
-            ], 404);
-        }
-
-        /*
-         * Hanya creator / admin aktif
-         * yang boleh mengelola anggota.
-         */
-        Gate::authorize('manageMembers', $group);
-
-        /*
-         * Hanya request pending
-         * yang boleh diproses.
-         */
-        if ($member->status !== 'pending') {
-            return response()->json([
-                'message' =>
-                    'Permintaan anggota ini sudah diproses.',
-            ], 422);
-        }
-
-        $status =
-            $request->validated()['status'];
-
-        /*
-         * Saat approve,
-         * cek kapasitas lagi.
-         */
-        if ($status === 'accepted') {
-            $activeMembers = $group->members()
-                ->where('status', 'accepted')
-                ->count();
-
-            if (
-                $activeMembers >=
-                $group->max_members
-            ) {
-                return response()->json([
-                    'message' =>
-                        'Grup sudah penuh. Permintaan tidak dapat diterima.',
-                ], 422);
-            }
-        }
-
-        $member->update([
-            'status' => $status,
-
-            'joined_at' =>
-                $status === 'accepted'
-                    ? now()
-                    : null,
-        ]);
-
-        /*
-         * Kirim notifikasi kepada user
-         * bahwa permintaan join telah
-         * diterima atau ditolak.
-         */
-        $this->insertNotification(
-            (int) $member->user_id,
-
-            $status === 'accepted'
-                ? 'Permintaan bergabung diterima'
-                : 'Permintaan bergabung ditolak',
-
-            $status === 'accepted'
-                ? "Permintaan bergabung ke grup {$group->name} telah diterima."
-                : "Permintaan bergabung ke grup {$group->name} telah ditolak.",
-
-            [
-                'group_id' =>
-                    (int) $group->id,
-
-                'group_name' =>
-                    $group->name,
-
-                'status' =>
-                    $status,
-            ]
-        );
-
-        $member->load([
-            'user:id,name',
-            'user.profile:id,user_id,avatar_url',
-        ]);
-
-        return response()->json([
-            'message' =>
-                $status === 'accepted'
+                'message' => $member->status === 'accepted'
                     ? 'Permintaan anggota berhasil diterima.'
                     : 'Permintaan anggota berhasil ditolak.',
-
-            'data' =>
-                (new GroupMemberResource($member))
-                    ->resolve($request),
-        ]);
-    }
-
-    /**
-     * Membuat notifikasi in-app.
-     *
-     * Kegagalan notifikasi tidak boleh
-     * menggagalkan proses utama grup.
-     */
-    private function insertNotification(
-        int $userId,
-        string $title,
-        string $message,
-        array $extra = []
-    ): void {
-        try {
-            DB::table('notifications')->insert([
-                'id' =>
-                    (string) Str::uuid(),
-
-                'type' =>
-                    'group',
-
-                'notifiable_type' =>
-                    'App\\Models\\User',
-
-                'notifiable_id' =>
-                    $userId,
-
-                'data' => json_encode(
-                    array_merge([
-                        'title' => $title,
-                        'message' => $message,
-                    ], $extra),
-                    JSON_UNESCAPED_UNICODE
-                ),
-
-                'read_at' =>
-                    null,
-
-                'created_at' =>
-                    now(),
-
-                'updated_at' =>
-                    now(),
+                'data' => (new GroupMemberResource($member))->resolve($request),
             ]);
-        } catch (\Throwable $e) {
-            report($e);
-        }
-    }
-
-    /**
-     * Membuat slug unik.
-     */
-    private function generateUniqueSlug(
-        string $name,
-        ?int $ignoreGroupId = null
-    ): string {
-        $baseSlug = Str::slug($name);
-
-        if ($baseSlug === '') {
-            $baseSlug =
-                'study-group';
-        }
-
-        $slug = $baseSlug;
-        $counter = 1;
-
-        while (
-            StudyGroup::withTrashed()
-                ->when(
-                    $ignoreGroupId,
-                    fn ($query) =>
-                        $query->where(
-                            'id',
-                            '!=',
-                            $ignoreGroupId
-                        )
-                )
-                ->where(
-                    'slug',
-                    $slug
-                )
-                ->exists()
-        ) {
-            $slug =
-                $baseSlug .
-                '-' .
-                $counter;
-
-            $counter++;
-        }
-
-        return $slug;
+        });
     }
 }

@@ -925,10 +925,9 @@ class StudyBuddyApiTest extends TestCase
 
         $response
             ->assertForbidden()
-            ->assertJsonPath(
-                'message',
-                'Anda tidak memiliki akses untuk mengubah materi ini'
-            );
+            ->assertExactJson([
+                'message' => 'Anda tidak memiliki akses untuk mengubah materi ini',
+            ]);
 
         $this->assertDatabaseHas('materials', [
             'id' => $material->id,
