@@ -553,8 +553,22 @@ class BuddyController extends Controller
             $existingConnection = $this->findConnection(
                 $currentUser->id,
                 $buddy->id,
+                true,
                 true
             );
+
+            if ($existingConnection?->trashed()) {
+                $existingConnection->restore();
+                $existingConnection->update([
+                    'requester_id' => $currentUser->id,
+                    'receiver_id' => $buddy->id,
+                    'status' => 'pending',
+                ]);
+
+                return [
+                    'connection' => $existingConnection->fresh(),
+                ];
+            }
 
             if (
                 $existingConnection &&
@@ -731,7 +745,8 @@ class BuddyController extends Controller
     private function findConnection(
         int $firstUserId,
         int $secondUserId,
-        bool $lockForUpdate = false
+        bool $lockForUpdate = false,
+        bool $withTrashed = false
     ): ?BuddyConnection {
         $query = BuddyConnection::query()
             ->where(function ($query) use (
@@ -739,17 +754,27 @@ class BuddyController extends Controller
                 $secondUserId
             ) {
                 $query
-                    ->where('requester_id', $firstUserId)
-                    ->where('receiver_id', $secondUserId);
-            })
-            ->orWhere(function ($query) use (
-                $firstUserId,
-                $secondUserId
-            ) {
-                $query
-                    ->where('requester_id', $secondUserId)
-                    ->where('receiver_id', $firstUserId);
+                    ->where(function ($query) use (
+                        $firstUserId,
+                        $secondUserId
+                    ) {
+                        $query
+                            ->where('requester_id', $firstUserId)
+                            ->where('receiver_id', $secondUserId);
+                    })
+                    ->orWhere(function ($query) use (
+                        $firstUserId,
+                        $secondUserId
+                    ) {
+                        $query
+                            ->where('requester_id', $secondUserId)
+                            ->where('receiver_id', $firstUserId);
+                    });
             });
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
 
         if ($lockForUpdate) {
             $query->lockForUpdate();

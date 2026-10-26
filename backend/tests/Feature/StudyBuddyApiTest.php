@@ -1629,12 +1629,32 @@ public function test_buddy_requester_can_cancel_pending_request(): void
             'Permintaan buddy berhasil dibatalkan.'
         );
 
-    $this->assertDatabaseMissing(
-        'buddy_connections',
-        [
-            'id' => $connection->id,
-        ]
-    );
+    $this->assertSoftDeleted($connection);
+}
+
+public function test_buddy_can_reconnect_after_cancelled_request(): void
+{
+    $requester = User::factory()->create();
+    $receiver = User::factory()->create();
+
+    $connection = BuddyConnection::create([
+        'requester_id' => $requester->id,
+        'receiver_id' => $receiver->id,
+        'status' => 'pending',
+    ]);
+    $connection->delete();
+
+    $this
+        ->actingAs($requester, 'sanctum')
+        ->postJson("/api/v1/buddies/{$receiver->id}/connect")
+        ->assertSuccessful();
+
+    $this->assertDatabaseHas('buddy_connections', [
+        'id' => $connection->id,
+        'status' => 'pending',
+        'deleted_at' => null,
+    ]);
+    $this->assertDatabaseCount('buddy_connections', 1);
 }
 
 public function test_buddy_receiver_cannot_delete_pending_request(): void
@@ -1686,12 +1706,7 @@ public function test_buddy_accepted_connection_can_be_disconnected(): void
             'Koneksi buddy berhasil diputus.'
         );
 
-    $this->assertDatabaseMissing(
-        'buddy_connections',
-        [
-            'id' => $connection->id,
-        ]
-    );
+    $this->assertSoftDeleted($connection);
 }
 
 public function test_buddy_connections_returns_incoming_and_outgoing_state(): void
