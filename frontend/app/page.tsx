@@ -1,4 +1,12 @@
 import Image from "next/image";
+import { createPageMetadata } from "@/lib/metadata";
+
+export const metadata = createPageMetadata({
+  title: "Beranda | StudyBuddy",
+  description:
+    "StudyBuddy membantu mahasiswa menemukan teman belajar, grup, materi, kuis, dan tutor.",
+  path: "/",
+});
 
 export default function Home() {
   return (
