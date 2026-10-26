@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from 'react';
-import Image from 'next/image';
+import AvatarImage from '@/components/ui/AvatarImage';
 import {
   BookOpen,
   Brain,
@@ -49,12 +49,12 @@ export default function ProfileEditor({ formData, subjects, selectedSubjectIds, 
                 <div className="relative">
                   <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-3xl font-bold text-white shadow-md">
                     {displayedAvatar ? (
-                      <Image
+                      <AvatarImage
                         src={displayedAvatar}
                         alt="Foto profil"
-                        fill
-                        unoptimized
+                        sizes="112px"
                         className="object-cover"
+                        fallback={initials}
                       />
                     ) : (
                       initials

@@ -1,3 +1,4 @@
+import AvatarImage from '@/components/ui/AvatarImage';
 import type { BuddyDetailDto } from '@/types/api';
 import { BookOpen, Brain, CalendarDays, ExternalLink, Code2, GraduationCap, Mail, Phone, School, Users, Clock3, Loader2, Sparkles, UserPlus, X } from 'lucide-react';
 
@@ -78,10 +79,12 @@ export function BuddyDetailModal({
                 <div className="flex min-w-0 flex-col sm:flex-row sm:items-end sm:gap-5">
                   <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-white bg-blue-100 text-2xl font-bold text-blue-700 shadow-lg sm:h-28 sm:w-28">
                     {buddy.profile?.avatar_url ? (
-                      <img
+                      <AvatarImage
                         src={buddy.profile.avatar_url}
                         alt={`Foto profil ${buddy.name}`}
+                        size={112}
                         className="h-full w-full object-cover"
+                        fallback={initials || 'U'}
                       />
                     ) : (
                       initials || 'U'

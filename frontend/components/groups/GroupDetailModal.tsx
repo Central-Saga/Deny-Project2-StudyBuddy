@@ -17,6 +17,7 @@ import {
   ModalOverlay,
   DetailStat,
 } from './parts';
+import AvatarImage from '@/components/ui/AvatarImage';
 import type { GroupsPageState } from '@/hooks/groups/useGroupsPage';
 
 type Props = Pick<
@@ -247,12 +248,14 @@ export default function GroupDetailModal({
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-xs font-bold text-blue-600">
                             {member.user?.profile?.avatar_url ? (
-                              <img
+                                                        <AvatarImage
                                 src={member.user.profile.avatar_url}
                                 alt={`Foto profil ${member.user.name}`}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
+                                                          size={36}
+                                                          className="h-full w-full object-cover"
+                                                          fallback={member.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                                        />
+                                                      ) : (
                               member.user?.name?.charAt(0).toUpperCase() || 'U'
                             )}
                           </div>
@@ -303,12 +306,14 @@ export default function GroupDetailModal({
                             <div className="flex min-w-0 items-center gap-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-xs font-bold text-amber-600 shadow-sm">
                                 {member.user?.profile?.avatar_url ? (
-                                  <img
+                                                                <AvatarImage
                                     src={member.user.profile.avatar_url}
                                     alt={`Foto profil ${member.user.name}`}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
+                                                                  size={36}
+                                                                  className="h-full w-full object-cover"
+                                                                  fallback={member.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                                                />
+                                                              ) : (
                                   member.user?.name?.charAt(0).toUpperCase() || 'U'
                                 )}
                               </div>
