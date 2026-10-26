@@ -1,5 +1,17 @@
 import { Download, Flag, Loader2, Pencil, Trash2 } from 'lucide-react';
+import AvatarImage from '@/components/ui/AvatarImage';
 import type { Material } from './types';
+
+function getUploaderInitials(name?: string | null): string {
+  return (name || 'Mahasiswa')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0))
+    .join('')
+    .toUpperCase();
+}
 import {
   formatDate,
   formatFileSize,
@@ -96,20 +108,15 @@ export default function MaterialCard({
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-[11px] font-bold text-white">
             {material.user?.profile?.avatar_url ? (
-              <img
+              <AvatarImage
                 src={material.user.profile.avatar_url}
                 alt={`Foto profil ${material.user.name}`}
+                size={36}
                 className="h-full w-full object-cover"
+                fallback={getUploaderInitials(material.user?.name)}
               />
             ) : (
-              (material.user?.name || 'Mahasiswa')
-                .trim()
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((word) => word.charAt(0))
-                .join('')
-                .toUpperCase()
+              getUploaderInitials(material.user?.name)
             )}
           </div>
 

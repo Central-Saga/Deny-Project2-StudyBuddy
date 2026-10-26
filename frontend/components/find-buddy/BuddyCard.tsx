@@ -1,3 +1,4 @@
+import AvatarImage from '@/components/ui/AvatarImage';
 import type { BuddyDto } from '@/types/api';
 import { Brain, Check, Clock3, Eye, Loader2, Unlink, UserPlus, X } from 'lucide-react';
 import type { MatchingMode } from './utils';
@@ -35,10 +36,12 @@ export function BuddyCard({
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-100 text-sm font-bold text-blue-700">
               {buddy.profile?.avatar_url ? (
-                <img
+                <AvatarImage
                   src={buddy.profile.avatar_url}
                   alt={`Foto profil ${buddy.name}`}
+                  size={44}
                   className="h-full w-full object-cover"
+                  fallback={initials || 'U'}
                 />
               ) : (
                 initials || 'U'

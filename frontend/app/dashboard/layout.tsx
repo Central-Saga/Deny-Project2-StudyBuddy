@@ -14,7 +14,7 @@ import {
 
 
 
-import Image from 'next/image';
+import AvatarImage from '@/components/ui/AvatarImage';
 
 import Link from 'next/link';
 
@@ -3042,29 +3042,7 @@ export default function DashboardLayout({
 
                   ?.avatar_url ? (
 
-                  <Image
-
-                    src={
-
-                      userData
-
-                        .profile
-
-                        .avatar_url
-
-                    }
-
-                    alt={`Foto profil ${userData.name}`}
-
-                    fill
-
-                    sizes="36px"
-
-                    unoptimized
-
-                    className="object-cover"
-
-                  />
+                  <AvatarImage src={userData.profile.avatar_url} alt={`Foto profil ${userData.name}`} sizes="36px" className="object-cover" fallback={userData?.name ? userData.name.charAt(0).toUpperCase() : 'U'} />
 
                 ) : userData?.name ? (
 

@@ -10,6 +10,7 @@ import {
   UserRound,
   Video,
 } from "lucide-react";
+import AvatarImage from '@/components/ui/AvatarImage';
 import { DAYS, timeLabel } from "@/components/tutoring/utils";
 import type { TutoringController } from "@/hooks/tutoring/useTutoringPage";
 
@@ -148,10 +149,16 @@ export default function TutorSearchSection({ ctrl }: { ctrl: TutoringController 
                     >
                       <div className="flex items-start gap-3">
                         {tutor.avatar_url ? (
-                          <img
+                          <AvatarImage
                             src={tutor.avatar_url}
                             alt={`Foto ${tutor.name}`}
+                            size={44}
                             className="h-11 w-11 shrink-0 rounded-2xl object-cover ring-1 ring-slate-200"
+                            fallback={
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                                <UserRound className="h-5 w-5" />
+                              </div>
+                            }
                           />
                         ) : (
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
