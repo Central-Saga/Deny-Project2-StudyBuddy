@@ -16,5 +16,10 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             AdminSeeder::class,
         ]);
+
+        // Data demo hanya untuk lingkungan non-produksi.
+        if (! app()->isProduction()) {
+            $this->call(DemoDataSeeder::class);
+        }
     }
 }

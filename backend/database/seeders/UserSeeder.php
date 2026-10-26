@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use App\Models\Profile;
 use App\Models\Subject;
+use App\Models\User;
 use App\Models\UserSubject;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -14,14 +14,15 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         // 1. Akun Budi (Tutor / Mahasiswa Senior)
-        $budi = User::create([
-            'name' => 'Budi Santoso',
-            'email' => 'budi@example.com',
-            'password' => Hash::make('password123'),
-        ]);
+        $budi = User::firstOrCreate(
+            ['email' => 'budi@example.com'],
+            [
+                'name' => 'Budi Santoso',
+                'password' => Hash::make('password123'),
+            ]
+        );
 
-        Profile::create([
-            'user_id' => $budi->id,
+        Profile::firstOrCreate(['user_id' => $budi->id], [
             'bio' => 'Mahasiswa Informatika semester 6 yang suka berbagi ilmu seputar Pemrograman Web dan Laravel.',
             'university' => 'Universitas Indonesia',
             'major' => 'Teknik Informatika',
@@ -30,14 +31,15 @@ class UserSeeder extends Seeder
         ]);
 
         // 2. Akun Siti (Student)
-        $siti = User::create([
-            'name' => 'Siti Aminah',
-            'email' => 'siti@example.com',
-            'password' => Hash::make('password123'),
-        ]);
+        $siti = User::firstOrCreate(
+            ['email' => 'siti@example.com'],
+            [
+                'name' => 'Siti Aminah',
+                'password' => Hash::make('password123'),
+            ]
+        );
 
-        Profile::create([
-            'user_id' => $siti->id,
+        Profile::firstOrCreate(['user_id' => $siti->id], [
             'bio' => 'Sedang giat belajar Struktur Data dan Matematika Diskrit.',
             'university' => 'Institut Teknologi Bandung',
             'major' => 'Sistem Informasi',
@@ -49,21 +51,25 @@ class UserSeeder extends Seeder
         $sda = Subject::where('code', 'CS102')->first();
 
         if ($webDev) {
-            UserSubject::create([
-                'user_id' => $budi->id,
-                'subject_id' => $webDev->id,
-                'proficiency_level' => 'advanced',
-                'type' => 'teaching',
-            ]);
+            UserSubject::firstOrCreate(
+                [
+                    'user_id' => $budi->id,
+                    'subject_id' => $webDev->id,
+                    'type' => 'teaching',
+                ],
+                ['proficiency_level' => 'advanced']
+            );
         }
 
         if ($sda) {
-            UserSubject::create([
-                'user_id' => $siti->id,
-                'subject_id' => $sda->id,
-                'proficiency_level' => 'beginner',
-                'type' => 'learning',
-            ]);
+            UserSubject::firstOrCreate(
+                [
+                    'user_id' => $siti->id,
+                    'subject_id' => $sda->id,
+                    'type' => 'learning',
+                ],
+                ['proficiency_level' => 'beginner']
+            );
         }
     }
 }
