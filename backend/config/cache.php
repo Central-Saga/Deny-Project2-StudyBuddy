@@ -100,12 +100,17 @@ return [
         'failover' => [
             'driver' => 'failover',
             'stores' => [
-                'database',
+                'redis',
                 'array',
             ],
         ],
 
     ],
+
+    /*
+    | Default TTL (detik) untuk data yang di-cache aplikasi.
+    */
+    'ttl' => (int) env('CACHE_TTL', 300),
 
     /*
     |--------------------------------------------------------------------------
