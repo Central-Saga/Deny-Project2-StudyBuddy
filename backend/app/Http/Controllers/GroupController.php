@@ -202,7 +202,10 @@ class GroupController extends Controller
         Gate::authorize('delete', $group);
 
         try {
-            $group->delete();
+            DB::transaction(function () use ($group) {
+                $group->sessions()->get()->each->delete();
+                $group->delete();
+            });
 
             return response()->json([
                 'message' =>
@@ -571,7 +574,7 @@ class GroupController extends Controller
         $counter = 1;
 
         while (
-            StudyGroup::query()
+            StudyGroup::withTrashed()
                 ->when(
                     $ignoreGroupId,
                     fn ($query) =>

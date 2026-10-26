@@ -165,6 +165,48 @@ class StudyBuddyApiTest extends TestCase
         ]);
     }
 
+    public function test_group_deletion_soft_deletes_sessions_and_frees_name(): void
+    {
+        $user = User::factory()->create();
+        $subject = $this->createSubject();
+        $payload = [
+            'name' => 'Soft Delete Group',
+            'subject_id' => $subject->id,
+            'description' => 'Uji soft delete.',
+            'max_members' => 10,
+            'is_private' => false,
+        ];
+
+        $groupId = $this
+            ->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/groups', $payload)
+            ->assertCreated()
+            ->json('data.id');
+
+        $session = \App\Models\StudySession::create([
+            'study_group_id' => $groupId,
+            'subject_id' => $subject->id,
+            'host_id' => $user->id,
+            'title' => 'Sesi',
+            'max_participants' => 5,
+            'scheduled_at' => now()->addDay(),
+            'duration_minutes' => 60,
+        ]);
+
+        $this
+            ->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/groups/{$groupId}")
+            ->assertOk();
+
+        $this->assertSoftDeleted('study_groups', ['id' => $groupId]);
+        $this->assertSoftDeleted($session);
+
+        $this
+            ->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/groups', $payload)
+            ->assertCreated();
+    }
+
     public function test_group_creation_rolls_back_when_membership_fails(): void
     {
         $user = User::factory()->create();

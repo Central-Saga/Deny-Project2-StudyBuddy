@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreStudySessionRequest extends FormRequest
 {
@@ -16,7 +17,8 @@ class StoreStudySessionRequest extends FormRequest
         return [
             'study_group_id' => [
                 'required',
-                'exists:study_groups,id',
+                Rule::exists('study_groups', 'id')
+                    ->whereNull('deleted_at'),
             ],
             'title' => [
                 'required',
