@@ -276,10 +276,23 @@ docker compose exec backend php artisan route:list --path=api/v1
 | `study_buddy_test` tidak ada saat test | Buat database test terpisah seperti pada bagian pengujian. |
 | Perubahan `DB_PASSWORD` tidak berpengaruh | Volume PostgreSQL yang sudah dibuat menyimpan password saat inisialisasi pertama; ubah kredensial dengan prosedur PostgreSQL atau gunakan volume baru **hanya jika data lama boleh dihapus**. |
 
+## Pengaturan Environment Produksi
+
+Default `.env.example` bersifat fail-safe (`APP_DEBUG=false`). Untuk produksi/VPS pastikan:
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+```
+
+- `APP_DEBUG=true` hanya boleh diaktifkan di development lokal karena menampilkan stack trace, potongan kode, dan variabel environment (termasuk kredensial) pada error 500.
+- Saat debug mati, respons error API hanya berisi pesan generik (`Terjadi kesalahan pada server.`) tanpa detail internal.
+- Ganti semua kredensial contoh (DB, Redis, `APP_KEY`) dengan nilai sungguhan.
+
 ## Keamanan dan Kontribusi
 
 - **Jangan commit** `.env`, `.env.local`, API key, token, password sungguhan, atau data pribadi.
 - `.env.example` hanya berisi **nilai contoh/placeholder** dan aman untuk dibagikan setelah ditinjau.
-- Jalankan aplikasi ini sebagai **development lokal**. `APP_DEBUG=true`, server development, akun demo, dan konfigurasi Compose saat ini **tidak boleh langsung dipakai untuk production**.
+- Jalankan aplikasi ini sebagai **development lokal**. Server development, akun demo, dan konfigurasi Compose saat ini **tidak boleh langsung dipakai untuk production**.
 - Untuk perubahan, buat branch dari `main`, lakukan pengujian, kemudian ajukan Pull Request ke repository.
 - Dokumentasi ini disusun untuk [Issue #42](https://github.com/Central-Saga/Deny-Project2-StudyBuddy/issues/42).
