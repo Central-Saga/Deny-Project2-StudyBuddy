@@ -1,5 +1,7 @@
 # Study Buddy 🎓
 
+[![CI](https://github.com/Central-Saga/Deny-Project2-StudyBuddy/actions/workflows/ci.yml/badge.svg)](https://github.com/Central-Saga/Deny-Project2-StudyBuddy/actions/workflows/ci.yml)
+
 **Study Buddy** adalah platform belajar kolaboratif untuk mahasiswa: mencari partner belajar, mengelola grup dan jadwal belajar, berbagi materi, mengerjakan kuis, serta melakukan *peer tutoring*. Tersedia panel administrator untuk pemantauan dan moderasi aktivitas.
 
 > **Status:** panduan ini ditujukan untuk menjalankan aplikasi di lingkungan **development lokal** menggunakan Docker Compose, bukan panduan deployment production. Contoh kredensial di repository hanya untuk pengembangan dan harus diganti sebelum aplikasi dipublikasikan.
